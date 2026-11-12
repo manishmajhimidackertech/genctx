@@ -1,4 +1,4 @@
-# genctx — Project Tracker
+# genctx - Project Tracker
 
 > Upload this file to any Claude session to continue exactly where we left off.
 
@@ -18,7 +18,7 @@ A developer tool that eliminates the need to re-explain your codebase every time
 
 ## Current Status
 
-**Built and verified on a real Windows machine.** Three real bugs surfaced during that build/package process (not sandbox-only issues) — all fixed and reverified. See "Bugs Found & Fixed" below. The sandbox note in "Known Build Issue" still applies to *this Claude session's own* verification environment, but is no longer the whole story — the fixes below were needed regardless of Rust version.
+**Built and verified on a real Windows machine.** Three real bugs surfaced during that build/package process (not sandbox-only issues) - all fixed and reverified. See "Bugs Found & Fixed" below. The sandbox note in "Known Build Issue" still applies to *this Claude session's own* verification environment, but is no longer the whole story - the fixes below were needed regardless of Rust version.
 
 ---
 
@@ -37,7 +37,7 @@ A developer tool that eliminates the need to re-explain your codebase every time
 | Git behaviour | Store not tracked by git (self-ignoring `.genctx/`) | Feature, not a bug. Devs run `genctx index` after clone |
 | Trigger | VS Code extension notifies daemon on file save | Extension stays thin, daemon does all work |
 | Daemon + CLI language | **Rust** | Single `.exe`, no runtime deps, tiny memory footprint, great for background daemon |
-| VS Code extension language | **TypeScript** | Non-negotiable — VS Code extension API requirement |
+| VS Code extension language | **TypeScript** | Non-negotiable - VS Code extension API requirement |
 | Distribution | **GitHub Releases** | Daemon `.exe` + CLI `.exe` + cpctx `.exe` published as release artifacts; VS Code extension via Marketplace. **Backlog: Windows code-signing cert before public launch** |
 | Project name | **genctx** | Final |
 | Context for LLM-generated files | **Comment-block extraction**, not Ollama | LLM writes context as a delimited comment at the top of the file it generates (taught via `genctx.md` skill file). Daemon/CLI detects it, writes it to the store, then strips it from source. Ollama is never called for these files |
@@ -48,58 +48,58 @@ A developer tool that eliminates the need to re-explain your codebase every time
 | Migration from v0.1 | **`genctx migrate [--remove-streams]`** | Explicit, idempotent import of ADS context into the store; never overwrites newer store rows |
 | `genctx.md` for non-Claude LLMs | **Out of scope for v1** | Targets Claude/Claude Code specifically for now |
 | Auto-update | **Passive check on daemon startup only** | One-time GitHub Releases check, never auto-replaces running `.exe` |
-| Copying files | **`cpctx` — context-preserving copy tool** | Whole-project copies need nothing (the store is inside the folder). `cpctx copy` is for copying files into a *different* project: it copies bytes first, then carries each file's context from the source store to the destination store. `cpctx setup` registers itself on the user PATH permanently (no admin required) |
+| Copying files | **`cpctx` - context-preserving copy tool** | Whole-project copies need nothing (the store is inside the folder). `cpctx copy` is for copying files into a *different* project: it copies bytes first, then carries each file's context from the source store to the destination store. `cpctx setup` registers itself on the user PATH permanently (no admin required) |
 
 ---
 
 ## Completed Work
 
 ### crates/core (shared library) ✅
-- **`lib.rs`** — re-exports all public modules
-- **`store.rs`** — the context store. `ContextStore` (open / open_existing / open_for_file, get, put, remove, lookup, prune_missing), `StoreSet` (one open store per root for multi-file commands), `project_root()`, `retarget_body()`. `lookup()` returns `Current | Adopted | Stale | Missing`; `Adopted` is the rename/copy carry-over by content hash, and drops the donor row when its file is gone
-- **`ads.rs`** — *legacy.* ADS read/write via `windows-rs`, now only read by `genctx migrate`. Non-Windows stub returns `AdsError::NotSupported` gracefully
-- **`config.rs`** — `gencontext.yaml` parsing with per-file walk-up resolution (mirrors `.gitignore` semantics). `find_config()`, `load_config()`, `load_config_for_file()`. `ProjectConfig` struct with `header_block()` builder
-- **`extract.rs`** — `<<<GENCTX … GENCTX>>>` comment-block detection and stripping. **Only a block at the top of a file counts** (after at most a few preamble lines: shebang, `#![…]`, encoding cookie, `<?php`…), so docs showing the format are never rewritten. Handles all comment prefix styles (`#`, `//`, `/* */`, `<!-- -->`). Validates all six required fields. Keeps CRLF line endings. Malformed blocks fall through to Ollama — never a silent failure
-- **`ollama.rs`** — `OllamaClient` wrapping `reqwest`. `resolve_ollama_url()`: `GENCTX_OLLAMA_URL` (user) wins; repo `ollama_url` must be loopback. `generate()` asks for JSON (`format: "json"`, `temperature: 0`, fixed `num_ctx`), validates the six fields (JSON or `KEY: value`, fences stripped), retries once, always sets `FILE` to the real path and `USED BY: UNKNOWN`
-- **`process.rs`** — **the keystone**. `prepare()` makes every decision without side effects (project → ignore rules → read → resume gate/carry-over → extraction → size gates → generate); `plan()` exposes it read-only (the daemon uses it), `process_file()` executes it. Committed blocks (present at git `HEAD`) are stored but left in the file. Source rewrites are atomic. `ProcessSource` gained `ExtractedKept`, `SkippedIgnored`, `has_context()`, `describe()`
-- **`store.rs`** additions — schema v2 (six `fields` + `source` column; v1 upgraded in place), `resolve()` (read-only) + `adopt()`, keys in on-disk case via `canonicalize`, `rename_path`/`remove_path` (directory prefixes), `prune_missing(under)`, `importers_of()`, `move_context()`/`forget_context()` for editor events, linked nested-project stores for cross-project moves
-- **`pack.rs`** — read-only rendering: `pack()` (header from current config + fields + optional imported files' context + source), `file_context()`, `project_map()`, `search()`; `USED BY` computed from other files' `IMPORTS`
-- **`filter.rs`** — single-file ignore check (hidden components, `genctx_ignore`, `.ignore`/`.gitignore` up to the repo root, `.git/info/exclude`, global excludes)
-- **`runtime.rs`** — daemon discovery file (`daemon.json`: port, token, pid, version) in a per-user, private location; random token; constant-time compare
+- **`lib.rs`** - re-exports all public modules
+- **`store.rs`** - the context store. `ContextStore` (open / open_existing / open_for_file, get, put, remove, lookup, prune_missing), `StoreSet` (one open store per root for multi-file commands), `project_root()`, `retarget_body()`. `lookup()` returns `Current | Adopted | Stale | Missing`; `Adopted` is the rename/copy carry-over by content hash, and drops the donor row when its file is gone
+- **`ads.rs`** - *legacy.* ADS read/write via `windows-rs`, now only read by `genctx migrate`. Non-Windows stub returns `AdsError::NotSupported` gracefully
+- **`config.rs`** - `gencontext.yaml` parsing with per-file walk-up resolution (mirrors `.gitignore` semantics). `find_config()`, `load_config()`, `load_config_for_file()`. `ProjectConfig` struct with `header_block()` builder
+- **`extract.rs`** - `<<<GENCTX … GENCTX>>>` comment-block detection and stripping. **Only a block at the top of a file counts** (after at most a few preamble lines: shebang, `#![…]`, encoding cookie, `<?php`…), so docs showing the format are never rewritten. Handles all comment prefix styles (`#`, `//`, `/* */`, `<!-- -->`). Validates all six required fields. Keeps CRLF line endings. Malformed blocks fall through to Ollama - never a silent failure
+- **`ollama.rs`** - `OllamaClient` wrapping `reqwest`. `resolve_ollama_url()`: `GENCTX_OLLAMA_URL` (user) wins; repo `ollama_url` must be loopback. `generate()` asks for JSON (`format: "json"`, `temperature: 0`, fixed `num_ctx`), validates the six fields (JSON or `KEY: value`, fences stripped), retries once, always sets `FILE` to the real path and `USED BY: UNKNOWN`
+- **`process.rs`** - **the keystone**. `prepare()` makes every decision without side effects (project → ignore rules → read → resume gate/carry-over → extraction → size gates → generate); `plan()` exposes it read-only (the daemon uses it), `process_file()` executes it. Committed blocks (present at git `HEAD`) are stored but left in the file. Source rewrites are atomic. `ProcessSource` gained `ExtractedKept`, `SkippedIgnored`, `has_context()`, `describe()`
+- **`store.rs`** additions - schema v2 (six `fields` + `source` column; v1 upgraded in place), `resolve()` (read-only) + `adopt()`, keys in on-disk case via `canonicalize`, `rename_path`/`remove_path` (directory prefixes), `prune_missing(under)`, `importers_of()`, `move_context()`/`forget_context()` for editor events, linked nested-project stores for cross-project moves
+- **`pack.rs`** - read-only rendering: `pack()` (header from current config + fields + optional imported files' context + source), `file_context()`, `project_map()`, `search()`; `USED BY` computed from other files' `IMPORTS`
+- **`filter.rs`** - single-file ignore check (hidden components, `genctx_ignore`, `.ignore`/`.gitignore` up to the repo root, `.git/info/exclude`, global excludes)
+- **`runtime.rs`** - daemon discovery file (`daemon.json`: port, token, pid, version) in a per-user, private location; random token; constant-time compare
 - **`fsutil.rs`** (atomic `replace_file`, lexical `absolute`), **`git.rs`** (`committed_version` via `git show HEAD:./file`), **`migrate.rs`** (ADS → store, with Windows-only tests)
 
 ### crates/daemon ✅
-- **`main.rs`** — binds `127.0.0.1:0` (or `GENCTX_DAEMON_PORT`), publishes port + random token via `runtime.rs`, exits if a live daemon already answers the handshake, removes the file on Ctrl-C/SIGTERM. Every connection must send `hello{token}` first. Inbound: `save`, `rename`, `delete`. Saves call `process::plan()` first: skip/up-to-date/carry-over/extract are answered immediately; only `Generate` is debounced (30 s) and queued behind a per-Ollama-server semaphore sized from `ollama_concurrency`. Status states: queued/generating/ready/skipped/error — `ready` only when context is stored. Update check against the real repo, opt-out via `GENCTX_NO_UPDATE_CHECK`. `--version`/`--help`
+- **`main.rs`** - binds `127.0.0.1:0` (or `GENCTX_DAEMON_PORT`), publishes port + random token via `runtime.rs`, exits if a live daemon already answers the handshake, removes the file on Ctrl-C/SIGTERM. Every connection must send `hello{token}` first. Inbound: `save`, `rename`, `delete`. Saves call `process::plan()` first: skip/up-to-date/carry-over/extract are answered immediately; only `Generate` is debounced (30 s) and queued behind a per-Ollama-server semaphore sized from `ollama_concurrency`. Status states: queued/generating/ready/skipped/error - `ready` only when context is stored. Update check against the real repo, opt-out via `GENCTX_NO_UPDATE_CHECK`. `--version`/`--help`
 
 ### crates/cli ✅
-- **`main.rs`** — subcommands: `init`, `index` (streaming walker, honours `.gitignore` even without git, never descends into `.genctx/`, prunes stale rows under the indexed dir at the end), `pack` (`--stdout`, `--with-imports`; on Linux a detached `__serve-clipboard` helper keeps the clipboard alive after exit), `map`, `reindex`, `extract`, `migrate`, `gc`, `mcp`
-- **`mcp.rs`** — MCP server over stdio (JSON-RPC 2.0, protocol 2024-11-05 … 2025-06-18): `get_file_context`, `project_map`, `search_context`; read-only, confined to the project root
+- **`main.rs`** - subcommands: `init`, `index` (streaming walker, honours `.gitignore` even without git, never descends into `.genctx/`, prunes stale rows under the indexed dir at the end), `pack` (`--stdout`, `--with-imports`; on Linux a detached `__serve-clipboard` helper keeps the clipboard alive after exit), `map`, `reindex`, `extract`, `migrate`, `gc`, `mcp`
+- **`mcp.rs`** - MCP server over stdio (JSON-RPC 2.0, protocol 2024-11-05 … 2025-06-18): `get_file_context`, `project_map`, `search_context`; read-only, confined to the project root
 
 ### crates/cpctx ✅ (new)
-- **`main.rs`** — two clap subcommands:
-  - `cpctx copy <src> <dest>` — copies file or directory tree, then carries each file's stored context into the destination project's store (see "cpctx" below). Gracefully handles: no context on source (normal), destination outside any project (a copied folder gets its own store), write failures (warns but doesn't abort the copy)
-  - `cpctx setup` — on Windows: writes binary dir to `HKCU\Environment\Path` registry key (permanent, no admin), patches PowerShell profile with a guarded `$env:PATH` prepend, idempotent. On non-Windows: prints manual `export PATH=` instructions
+- **`main.rs`** - two clap subcommands:
+  - `cpctx copy <src> <dest>` - copies file or directory tree, then carries each file's stored context into the destination project's store (see "cpctx" below). Gracefully handles: no context on source (normal), destination outside any project (a copied folder gets its own store), write failures (warns but doesn't abort the copy)
+  - `cpctx setup` - on Windows: writes binary dir to `HKCU\Environment\Path` registry key (permanent, no admin), patches PowerShell profile with a guarded `$env:PATH` prepend, idempotent. On non-Windows: prints manual `export PATH=` instructions
 
 ### vscode-extension ✅
-- **`extension.ts`** — `activate()` wires save / rename / delete listeners → daemon, active-editor change → `statusBar.refresh()`, commands `genctx.pack`, `genctx.packWithImports`, `genctx.copyProjectMap`, `genctx.reindex`, `genctx.openConfig`
-- **`daemon.ts`** — `DaemonClient` reads the discovery file (same path rules as `runtime.rs`), sends `hello{token}`, waits for `welcome`, reconnects with backoff (`1s → 30s`), auto-starts a detached `genctxd` once per session (`genctx.autoStartDaemon`, `genctx.daemonPath`, passes `GENCTX_OLLAMA_URL`)
-- **`statusBar.ts`** — icons: `$(clock)` queued, `$(sync~spin)` generating, `$(check)` ready, `$(circle-slash)` skipped (tooltip says why), `$(warning)` error
-- **`pack.ts`** — runs `genctx pack --stdout`, `genctx map`, `genctx reindex`; writes the clipboard with `vscode.env.clipboard`. `genctx.ollamaUrl`, `genctx.cliPath`, `genctx.daemonPath` are machine-scoped so a workspace can't set them
-- **`package.json`** — `configurationDefaults` hide `**/.genctx` from Explorer/search/watcher; `package-lock.json` committed for `npm ci`
-- **`hash.ts`** — `contentHash()` via Node `crypto.createHash('sha256')`, matches `process::content_hash()` byte-for-byte
+- **`extension.ts`** - `activate()` wires save / rename / delete listeners → daemon, active-editor change → `statusBar.refresh()`, commands `genctx.pack`, `genctx.packWithImports`, `genctx.copyProjectMap`, `genctx.reindex`, `genctx.openConfig`
+- **`daemon.ts`** - `DaemonClient` reads the discovery file (same path rules as `runtime.rs`), sends `hello{token}`, waits for `welcome`, reconnects with backoff (`1s → 30s`), auto-starts a detached `genctxd` once per session (`genctx.autoStartDaemon`, `genctx.daemonPath`, passes `GENCTX_OLLAMA_URL`)
+- **`statusBar.ts`** - icons: `$(clock)` queued, `$(sync~spin)` generating, `$(check)` ready, `$(circle-slash)` skipped (tooltip says why), `$(warning)` error
+- **`pack.ts`** - runs `genctx pack --stdout`, `genctx map`, `genctx reindex`; writes the clipboard with `vscode.env.clipboard`. `genctx.ollamaUrl`, `genctx.cliPath`, `genctx.daemonPath` are machine-scoped so a workspace can't set them
+- **`package.json`** - `configurationDefaults` hide `**/.genctx` from Explorer/search/watcher; `package-lock.json` committed for `npm ci`
+- **`hash.ts`** - `contentHash()` via Node `crypto.createHash('sha256')`, matches `process::content_hash()` byte-for-byte
 
 ### project files ✅
-- `Cargo.toml` — workspace root, all four crates, shared deps, `rust-version = "1.88"` (verified with that toolchain), `resolver = "3"` (MSRV-aware lockfile), no version pins
-- `Cargo.lock` — committed (binaries: reproducible builds)
-- `.github/workflows/ci.yml` — fmt, clippy `-D warnings` and tests on Linux/macOS/Windows, MSRV check, extension lint + compile
-- `gencontext.yaml` — dogfooding: genctx config for the genctx project itself
-- `docs/genctx.md` — skill file (moved from repo root into `docs/`); teaches any LLM the `<<<GENCTX` comment format
-- `docs/USAGE.md` — day-to-day usage walkthrough on a real project (CodeA4), added after the initial build
-- `docs/genctx_architecture_v5.svg`, `docs/genctx_tracker.md` — also moved from repo root into `docs/`; only `README.md` stays at the project root now
+- `Cargo.toml` - workspace root, all four crates, shared deps, `rust-version = "1.88"` (verified with that toolchain), `resolver = "3"` (MSRV-aware lockfile), no version pins
+- `Cargo.lock` - committed (binaries: reproducible builds)
+- `.github/workflows/ci.yml` - fmt, clippy `-D warnings` and tests on Linux/macOS/Windows, MSRV check, extension lint + compile
+- `gencontext.yaml` - dogfooding: genctx config for the genctx project itself
+- `docs/genctx.md` - skill file (moved from repo root into `docs/`); teaches any LLM the `<<<GENCTX` comment format
+- `docs/USAGE.md` - day-to-day usage walkthrough on a real project (CodeA4), added after the initial build
+- `docs/genctx_architecture_v5.svg`, `docs/genctx_tracker.md` - also moved from repo root into `docs/`; only `README.md` stays at the project root now
 - `.gitignore`
-- `vscode-extension/package.json` — includes `genctx.cliPath` setting for binary path override, plus `vscode:prepublish` script (see Bugs Found & Fixed)
+- `vscode-extension/package.json` - includes `genctx.cliPath` setting for binary path override, plus `vscode:prepublish` script (see Bugs Found & Fixed)
 - `vscode-extension/tsconfig.json`, `.eslintrc.json`, `.vscodeignore`
-- `README.md` — full documentation including: step-by-step Rust install guide (for users new to Rust), cpctx usage and setup, CLI reference, repo layout with annotated tree, architecture diagram, caveats, and a Documentation table linking into `docs/`
+- `README.md` - full documentation including: step-by-step Rust install guide (for users new to Rust), cpctx usage and setup, CLI reference, repo layout with annotated tree, architecture diagram, caveats, and a Documentation table linking into `docs/`
 
 ### TypeScript type-check ✅
 `npx tsc --noEmit` in `vscode-extension/` passes with zero errors.
@@ -109,31 +109,31 @@ A developer tool that eliminates the need to re-explain your codebase every time
 ## Bugs Found & Fixed (real Windows build)
 
 Three real bugs surfaced running the actual build/package commands on a real Windows
-machine — none of these were sandbox-only artifacts, all three would have failed on any
+machine - none of these were sandbox-only artifacts, all three would have failed on any
 machine regardless of Rust version.
 
-1. **`crates/core/src/ads.rs` — wouldn't compile.**
+1. **`crates/core/src/ads.rs` - wouldn't compile.**
    - `ReadFile`/`WriteFile` are gated behind the `Win32_System_IO` feature of the
      `windows` crate, which `crates/core/Cargo.toml` never enabled. Added it.
    - `CreateFileW`'s `dwdesiredaccess` parameter wants a raw `u32`, but
      `FILE_GENERIC_READ`/`FILE_GENERIC_WRITE` are `FILE_ACCESS_RIGHTS` (a newtype).
      Needed `.0` at all three call sites (`ads_exists`, `read_ads`, `write_ads`).
 
-2. **`crates/cli/src/main.rs` — wouldn't compile, looked like a Unicode/encoding bug but
+2. **`crates/cli/src/main.rs` - wouldn't compile, looked like a Unicode/encoding bug but
    wasn't.** The `cmd_init()` config template is a raw string `r#"..."#`. Its own content
    (`project: "# your project name here`) contains the literal two-character sequence
-   `"#` — which is *exactly* the raw-string terminator. The string closed there instead of
+   `"#` - which is *exactly* the raw-string terminator. The string closed there instead of
    at the real end, so everything after got re-parsed as ordinary Rust code, and the
    compiler surfaced confusing "unknown start of token" errors on em dashes/backticks much
    further down the file that had nothing to do with the actual cause. Fixed by widening
    the delimiter to `r##"..."##` (robust regardless of content) and fixing the broken YAML
-   underneath it (`project: ""  # your project name here`, etc. — the original was an
+   underneath it (`project: ""  # your project name here`, etc. - the original was an
    unterminated quoted scalar and wouldn't have parsed as YAML either).
 
-3. **`vscode-extension/package.json` — `npm run package` failed with "Extension
+3. **`vscode-extension/package.json` - `npm run package` failed with "Extension
    entrypoint(s) missing."** `"package": "vsce package"` never ran `tsc` first, so
    `out/extension.js` (the `"main"` entry point) never existed. Fixed by adding
-   `"vscode:prepublish": "npm run compile"` — `vsce` runs this hook automatically before
+   `"vscode:prepublish": "npm run compile"` - `vsce` runs this hook automatically before
    packaging. Verified end-to-end: `npm install && npm run package` now produces a working
    `.vsix` with `out/*.js` correctly bundled.
 
@@ -143,7 +143,7 @@ machine regardless of Rust version.
 
 Everything above got the code building, but a real-world walkthrough surfaced a gap in the
 docs themselves, not the code: the README's Prerequisites section listed Ollama as a bare
-bullet point (a link + "with at least one model pulled"), with no actual install steps —
+bullet point (a link + "with at least one model pulled"), with no actual install steps -
 unlike Rust, which had a full step-by-step section. Result: it's entirely possible to get
 through the whole build, install the VS Code extension, and only discover Ollama was never
 installed once files start sitting in `error` state in the status bar. Worse, even after
@@ -152,7 +152,7 @@ installing Ollama, pulling a model is a separate step that's easy to miss since 
 pulled.
 
 Fixed by adding a full **"Installing Ollama (step-by-step)"** section to `README.md`
-(mirroring the existing Rust one — install, verify the process is running via Task
+(mirroring the existing Rust one - install, verify the process is running via Task
 Manager, `ollama pull phi3:mini`, `ollama list` to confirm, a sanity-check `ollama run`),
 and threading pointers to it through `docs/USAGE.md`'s daemon-start step and its
 troubleshooting section, plus tightening the README Caveats bullet on Ollama to name the
@@ -173,10 +173,10 @@ claiming older versions. The old `clap`/`zeroize` pins are gone.
 
 | Item | Notes |
 |---|---|
-| Replace `"publisher": "genctx"` | `vscode-extension/package.json` — update to the real VS Code Marketplace publisher ID before Marketplace submission |
+| Replace `"publisher": "genctx"` | `vscode-extension/package.json` - update to the real VS Code Marketplace publisher ID before Marketplace submission |
 | First CI run | The Windows job runs the real NTFS-stream round trip, `migrate`, the hidden attribute and case-insensitive keys; macOS runs the case-insensitive key test. Neither has run yet (locally everything is verified on Linux plus a Windows cross-compile) |
 | End-to-end in real VS Code | The daemon protocol, auto-start and the extension's client code were exercised headlessly (Node against a real `genctxd`); the status bar and commands still need a look in an actual VS Code window |
-| ~~VS Code extension packaging~~ | ✅ Done — `npm install && npm run package` verified producing a working `.vsix` after the `vscode:prepublish` fix |
+| ~~VS Code extension packaging~~ | ✅ Done - `npm install && npm run package` verified producing a working `.vsix` after the `vscode:prepublish` fix |
 | Code signing | Windows code-signing cert for all three `.exe` files before public launch (SmartScreen / Defender false positives on unsigned daemons that listen on a socket) |
 
 ---
@@ -198,12 +198,12 @@ genctx/
     ├── core/                   ← shared library (genctx-core)
     │   └── src/
     │       ├── lib.rs
-    │       ├── store.rs        ← .genctx/context.db (SQLite) — the context store
+    │       ├── store.rs        ← .genctx/context.db (SQLite) - the context store
     │       ├── ads.rs          ← legacy NTFS ADS reader, used by `genctx migrate`
     │       ├── config.rs       ← gencontext.yaml, walk-up resolution
     │       ├── extract.rs      ← <<<GENCTX block detection + stripping
     │       ├── ollama.rs       ← Ollama /api/generate client
-    │       └── process.rs      ← process_file() — the keystone
+    │       └── process.rs      ← process_file() - the keystone
     ├── daemon/                 ← genctxd binary
     │   └── src/main.rs
     ├── cli/                    ← genctx binary
@@ -227,13 +227,13 @@ vscode-extension/
 | Need | Crate |
 |---|---|
 | Async runtime | `tokio` |
-| HTTP — Ollama calls | `reqwest` |
+| HTTP - Ollama calls | `reqwest` |
 | CLI argument parsing | `clap` 4 |
 | Context store | `rusqlite` with `bundled` (SQLite compiled in, no system dependency) |
 | Windows API (legacy ADS, hidden attribute) | `windows` (windows-rs, target_os = "windows" guard) |
 | Clipboard | `arboard` |
 | YAML parsing | `serde` + `serde_yaml` |
-| JSON — daemon protocol + Ollama response | `serde_json` |
+| JSON - daemon protocol + Ollama response | `serde_json` |
 | File hashing for debounce | `sha2` |
 | Logging | `tracing` + `tracing-subscriber` |
 | Error types | `thiserror` + `anyhow` |
@@ -265,7 +265,7 @@ vscode-extension/
 {"type":"status","path":"...","state":"skipped","message":"skipped: too small to need context"}
 ```
 
-Pack does NOT go over the socket — handled entirely in the extension by shelling out to `genctx pack`.
+Pack does NOT go over the socket - handled entirely in the extension by shelling out to `genctx pack`.
 
 ---
 
@@ -290,7 +290,7 @@ NOTES: Any unusual patterns or gotchas
 
 ---
 
-## cpctx — Context-Preserving Copy
+## cpctx - Context-Preserving Copy
 
 **Problem solved:** copying files from one project into another would leave their context behind in the source project's store. (Copying a whole project folder needs nothing, since the store is inside it.)
 
@@ -300,7 +300,7 @@ NOTES: Any unusual patterns or gotchas
 1. Reads `HKCU\Environment\Path` via `reg query`
 2. Prepends the binary directory if not already present, writes back via `reg add /t REG_EXPAND_SZ`
 3. Detects the PowerShell profile path via `$PROFILE`, appends a guarded `$env:PATH` block
-4. Both steps are idempotent — running setup twice is safe
+4. Both steps are idempotent - running setup twice is safe
 
 **Failures carrying context are warnings, not errors:** the bytes are already copied, and `genctx index` can regenerate anything missing.
 
@@ -321,17 +321,17 @@ NOTES: Any unusual patterns or gotchas
 
 A critical review found, and this pass fixed (each reproduced first, then covered by tests):
 
-- **Docs were being corrupted** — a `<<<GENCTX` line *anywhere* was extracted, so indexing this repo rewrote `docs/genctx.md` and `README.md`. Now only a top-of-file block counts, and a block committed in git is stored but never stripped (indexing this repo modified 17 tracked files before; 0 after).
-- **The daemon ignored `.gitignore`/`genctx_ignore`** — saves of `.env` etc. were processed. Ignore rules now live in core (`filter.rs`) and apply to every entry point.
-- **A repo chose where code was sent** — `ollama_url` from `gencontext.yaml` could be remote. Now loopback-only; remote needs `GENCTX_OLLAMA_URL`/machine-scoped `genctx.ollamaUrl`.
-- **Unsafe rewrites** — `fs::write` (truncate first) and CRLF → LF. Now temp file + rename, permissions/symlinks/CRLF kept.
-- **Stale project header** — PROJECT/TASK were copied into every row. Now rendered at pack time (schema v2).
-- **Status bar lied** — `ready` for skipped files. Now `skipped` with a reason; unchanged saves answer instantly.
-- **Linux clipboard** — contents vanished when `genctx pack` exited. Extension now uses the VS Code clipboard; the CLI uses a detached helper.
-- **Daemon** — hard-coded concurrency 2, unauthenticated fixed port, silent port fallback. Now per-server limits from config, OS port + token discovery file, single instance.
-- **Generation quality** — no output validation, `num_ctx` unset (silent truncation), `USED BY` guessed. Now JSON + validation + retry, fixed `num_ctx`, computed `USED BY`.
-- **Store edge cases** — case-variant keys on Windows/macOS, rename+edit losing context, cross-nested-project moves, stale rows. Fixed via on-disk-case keys, editor rename/delete events, linked stores, prune at end of `index`.
-- **New** — MCP server (`genctx mcp`), `genctx map`, `pack --with-imports`, extension auto-starts the daemon, CI, committed lockfile, honest MSRV.
+- **Docs were being corrupted** - a `<<<GENCTX` line *anywhere* was extracted, so indexing this repo rewrote `docs/genctx.md` and `README.md`. Now only a top-of-file block counts, and a block committed in git is stored but never stripped (indexing this repo modified 17 tracked files before; 0 after).
+- **The daemon ignored `.gitignore`/`genctx_ignore`** - saves of `.env` etc. were processed. Ignore rules now live in core (`filter.rs`) and apply to every entry point.
+- **A repo chose where code was sent** - `ollama_url` from `gencontext.yaml` could be remote. Now loopback-only; remote needs `GENCTX_OLLAMA_URL`/machine-scoped `genctx.ollamaUrl`.
+- **Unsafe rewrites** - `fs::write` (truncate first) and CRLF → LF. Now temp file + rename, permissions/symlinks/CRLF kept.
+- **Stale project header** - PROJECT/TASK were copied into every row. Now rendered at pack time (schema v2).
+- **Status bar lied** - `ready` for skipped files. Now `skipped` with a reason; unchanged saves answer instantly.
+- **Linux clipboard** - contents vanished when `genctx pack` exited. Extension now uses the VS Code clipboard; the CLI uses a detached helper.
+- **Daemon** - hard-coded concurrency 2, unauthenticated fixed port, silent port fallback. Now per-server limits from config, OS port + token discovery file, single instance.
+- **Generation quality** - no output validation, `num_ctx` unset (silent truncation), `USED BY` guessed. Now JSON + validation + retry, fixed `num_ctx`, computed `USED BY`.
+- **Store edge cases** - case-variant keys on Windows/macOS, rename+edit losing context, cross-nested-project moves, stale rows. Fixed via on-disk-case keys, editor rename/delete events, linked stores, prune at end of `index`.
+- **New** - MCP server (`genctx mcp`), `genctx map`, `pack --with-imports`, extension auto-starts the daemon, CI, committed lockfile, honest MSRV.
 
 ---
 
@@ -340,7 +340,7 @@ A critical review found, and this pass fixed (each reproduced first, then covere
 - **Renamed llmctx → genctx** everywhere (binaries, crates, `.genctx/`, `gencontext.yaml`, `<<<GENCTX`, `GENCTX_*`, extension ids). Back-compat: `.llmctx/` is moved on first open, `llmcontext.yaml`/`llmctx_ignore` still read, NTFS stream name and `LLMCTX_VERSION:` kept for `migrate`.
 - **Static dependency graph** (`graph.rs`, schema v3): `files` (rel_path, hash, mtime, size, lang, lines), `deps` (src, dst, kind = `scan`|`declared`, indexed both ways), `waits` (unresolved import candidates → re-scan when the file appears), `graph_meta` (scanner version; bump `SCANNER_VERSION` when a scanner changes so the next sync rescans everything). Sync is incremental by (mtime, size), reads/scans outside the write lock, writes in one savepoint.
 - **Uses**: Ollama is told the scanned imports instead of asked (`IMPORTS:` verbatim); `USED BY` and `--with-imports` are index lookups; `genctx graph [--json]`; MCP `get_dependencies`; `index` builds the graph first.
-- **Extension**: `genctx: Show code graph` — webview (`media/graph.js`), Barnes-Hut layout over visible nodes only, culled/chunked canvas drawing, local graph mode by default above 3,000 files. `tests/graphView.browser.js` drives it in Chromium (needs Playwright; not in `npm test`).
+- **Extension**: `genctx: Show code graph` - webview (`media/graph.js`), Barnes-Hut layout over visible nodes only, culled/chunked canvas drawing, local graph mode by default above 3,000 files. `tests/graphView.browser.js` drives it in Chromium (needs Playwright; not in `npm test`).
 - **Measured** (22k files / 30k links): cold sync 2 s, warm 0.3 s, JSON 6 MB in 0.25 s, DB 16 MB; full layout settles in ~7 s, 12 ms per frame zoomed out.
 
 ---

@@ -1,6 +1,6 @@
 // <<<GENCTX
 // FILE: vscode-extension/src/daemon.ts
-// ROLE: Client for genctxd — finds it via the per-user discovery file, authenticates, starts it if needed, sends save/rename/delete events
+// ROLE: Client for genctxd - finds it via the per-user discovery file, authenticates, starts it if needed, sends save/rename/delete events
 // EXPORTS: DaemonClient, daemonFilePath(), StatusMessage, StatusState, UpdateAvailableMessage
 // IMPORTS: NONE
 // USED BY: vscode-extension/src/extension.ts
@@ -55,7 +55,7 @@ interface DaemonInfo {
 
 /**
  * Where genctxd publishes its port and token. Mirrors `runtime_dir()` in
- * crates/core/src/runtime.rs — keep the two in sync.
+ * crates/core/src/runtime.rs - keep the two in sync.
  */
 export function daemonFilePath(): string | undefined {
   const env = (k: string): string | undefined => process.env[k] || undefined;
@@ -109,9 +109,9 @@ export interface DaemonOptions {
  * Emits:
  *   "status"          (msg: StatusMessage)
  *   "updateAvailable" (msg: UpdateAvailableMessage)
- *   "connect"         ()  — after the daemon accepted our token
+ *   "connect"         ()  - after the daemon accepted our token
  *   "disconnect"      ()
- *   "startFailed"     (err: Error) — auto-start could not launch genctxd
+ *   "startFailed"     (err: Error) - auto-start could not launch genctxd
  */
 export class DaemonClient extends EventEmitter {
   private socket: net.Socket | null = null;
@@ -180,7 +180,7 @@ export class DaemonClient extends EventEmitter {
     socket.on("data", (chunk: Buffer) => {
       this.lineBuffer += chunk.toString("utf8");
       const lines = this.lineBuffer.split("\n");
-      // Last element is either empty or a partial line — keep it in the buffer.
+      // Last element is either empty or a partial line - keep it in the buffer.
       this.lineBuffer = lines.pop() ?? "";
       for (const line of lines) {
         const trimmed = line.trim();
@@ -190,7 +190,7 @@ export class DaemonClient extends EventEmitter {
         try {
           this.dispatch(JSON.parse(trimmed) as InboundMessage);
         } catch {
-          // Malformed JSON from the daemon — ignore silently.
+          // Malformed JSON from the daemon - ignore silently.
         }
       }
     });
@@ -278,7 +278,7 @@ export class DaemonClient extends EventEmitter {
     try {
       this.socket?.write(JSON.stringify(msg) + "\n", "utf8");
     } catch {
-      // Socket died between the connected check and the write — harmless.
+      // Socket died between the connected check and the write - harmless.
     }
   }
 }

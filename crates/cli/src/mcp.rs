@@ -1,6 +1,6 @@
 // <<<GENCTX
 // FILE: crates/cli/src/mcp.rs
-// ROLE: `genctx mcp` — Model Context Protocol server over stdio exposing the project's stored context as tools
+// ROLE: `genctx mcp` - Model Context Protocol server over stdio exposing the project's stored context as tools
 // EXPORTS: serve(), Server
 // IMPORTS: crates/core/src/pack.rs, crates/core/src/store.rs, crates/core/src/config.rs
 // USED BY: crates/cli/src/main.rs
@@ -11,10 +11,10 @@
 //! directly instead of going through the clipboard.
 //!
 //! Tools:
-//! - `get_file_context` — context for one file (project header + six fields);
-//! - `project_map` — one line per file: path and ROLE;
-//! - `search_context` — files whose path or context mentions a query;
-//! - `get_dependencies` — what a file imports and what imports it, with
+//! - `get_file_context` - context for one file (project header + six fields);
+//! - `project_map` - one line per file: path and ROLE;
+//! - `search_context` - files whose path or context mentions a query;
+//! - `get_dependencies` - what a file imports and what imports it, with
 //!   each one's role, from the dependency graph.
 
 use std::{
@@ -168,7 +168,7 @@ impl Server {
             ContextStore::open_existing_for_file(&file).map_err(|e| e.to_string())?
         else {
             return Ok(format!(
-                "No genctx store for {path} yet — run `genctx graph` or `genctx index`."
+                "No genctx store for {path} yet - run `genctx graph` or `genctx index`."
             ));
         };
         let mut imports = store.imports_of(&rel).map_err(|e| e.to_string())?;
@@ -187,7 +187,7 @@ impl Server {
                 .flatten()
                 .and_then(|c| field_value(&c.fields, "ROLE").map(str::to_string));
             match role {
-                Some(r) => format!("  {dep} — {r}\n"),
+                Some(r) => format!("  {dep} - {r}\n"),
                 None => format!("  {dep}\n"),
             }
         };
@@ -344,7 +344,7 @@ mod tests {
         assert!(map["content"][0]["text"]
             .as_str()
             .unwrap()
-            .contains("a.py — Parses tokens"));
+            .contains("a.py - Parses tokens"));
 
         let hits = call(&server, "search_context", json!({"query":"TOKENS"}));
         assert!(hits["content"][0]["text"]
@@ -363,7 +363,7 @@ mod tests {
             .to_string();
         // Not in the graph yet: scanned on the spot.
         assert!(
-            text.contains("IMPORTS (1):\n  a.py — Parses tokens\n"),
+            text.contains("IMPORTS (1):\n  a.py - Parses tokens\n"),
             "{text}"
         );
 

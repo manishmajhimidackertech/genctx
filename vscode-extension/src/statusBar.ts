@@ -26,9 +26,9 @@ const ICON: Record<StatusState, string> = {
 const TOOLTIP: Record<StatusState, string> = {
   queued: "genctx: queued for context generation",
   generating: "genctx: generating context via Ollama…",
-  ready: "genctx: context ready — click to pack to clipboard",
+  ready: "genctx: context ready - click to pack to clipboard",
   skipped: "genctx: no context is generated for this file",
-  error: "genctx: context generation failed — click to pack anyway",
+  error: "genctx: context generation failed - click to pack anyway",
 };
 
 /**
@@ -59,12 +59,12 @@ export class StatusBarManager implements vscode.Disposable {
 
   /** Called when the daemon disconnects. */
   onDaemonDisconnect(): void {
-    // Keep showing last known file state — daemon may reconnect momentarily.
+    // Keep showing last known file state - daemon may reconnect momentarily.
     // Only show the disconnected badge if we've never connected this session.
     if (!this.daemonSeen) {
       this.item.text = "$(plug) genctx";
       this.item.tooltip =
-        "genctx: daemon not running — it starts automatically if `genctx.autoStartDaemon` is on; otherwise run genctxd";
+        "genctx: daemon not running - it starts automatically if `genctx.autoStartDaemon` is on; otherwise run genctxd";
       this.item.backgroundColor = new vscode.ThemeColor(
         "statusBarItem.warningBackground"
       );

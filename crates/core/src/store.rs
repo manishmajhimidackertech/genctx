@@ -1,6 +1,6 @@
 // <<<GENCTX
 // FILE: crates/core/src/store.rs
-// ROLE: Filesystem-independent context store — one SQLite database per project at <root>/.genctx/context.db
+// ROLE: Filesystem-independent context store - one SQLite database per project at <root>/.genctx/context.db
 // EXPORTS: ContextStore, StoreSet, StoredContext, Lookup, Donor, StoreError, LegacyBody, project_root(), project_root_for_file(), move_context(), forget_context(), field_value(), set_field(), parse_legacy_body(), STORE_DIR, CONTEXT_VERSION
 // IMPORTS: crates/core/src/config.rs, crates/core/src/fsutil.rs
 // USED BY: crates/core/src/process.rs, crates/core/src/pack.rs, crates/core/src/migrate.rs, crates/cli/src/main.rs, crates/cpctx/src/main.rs, crates/daemon/src/main.rs
@@ -12,7 +12,7 @@
 //! Context used to live in an NTFS Alternate Data Stream on each file, which
 //! only exists on Windows/NTFS and is silently dropped by most copy, sync and
 //! archive tools. Instead, every project now owns a single SQLite database in
-//! a hidden `.genctx/` directory at its root — the same idea as `.git/`. It
+//! a hidden `.genctx/` directory at its root - the same idea as `.git/`. It
 //! behaves identically on NTFS, ext4, APFS, FAT32, exFAT and network shares,
 //! and travels with the project whenever the project folder is copied.
 //!
@@ -60,7 +60,7 @@ pub const CONTEXT_VERSION: u32 = 1;
 /// 1: `body` held the whole rendered block (header, SOURCE, HASH, fields).
 /// 2: `fields` holds only the six fields; `source` has its own column; nested
 ///    project stores are linked for cross-project renames.
-/// 3: the dependency graph — `files` (one row per scanned project file) and
+/// 3: the dependency graph - `files` (one row per scanned project file) and
 ///    `deps` (indexed import edges, from the static scan and from `IMPORTS:`).
 const SCHEMA_VERSION: i64 = 3;
 
@@ -77,7 +77,7 @@ const BUSY_TIMEOUT: Duration = Duration::from_secs(5);
 pub enum StoreError {
     #[error(
         "{path} is not inside a genctx project (no gencontext.yaml, {STORE_DIR}/ or .git above it) \
-         — run `genctx init` in the project root"
+         - run `genctx init` in the project root"
     )]
     NoProject { path: String },
 
@@ -100,7 +100,7 @@ pub enum StoreError {
 
     #[error(
         "context store {path} uses schema {found}, but this genctx only knows {expected} \
-         — upgrade genctx"
+         - upgrade genctx"
     )]
     NewerSchema {
         path: String,
@@ -153,7 +153,7 @@ pub enum Lookup {
 /// The nearest `gencontext.yaml` wins, since that file is genctx's own
 /// project marker. Without one, the nearest directory that already has a
 /// store or is a git checkout is used. `None` means the path is not inside
-/// any project, and nothing should be written for it — the store must never
+/// any project, and nothing should be written for it - the store must never
 /// scatter `.genctx/` directories next to arbitrary files.
 pub fn project_root(start_dir: &Path) -> Option<PathBuf> {
     let start = absolute(start_dir);
@@ -322,7 +322,7 @@ impl ContextStore {
     /// in both directions' indexes, so "what does X import" and "who
     /// imports X" are both index lookups however large the project is.
     /// `waits` records, for each import that could not be resolved, the
-    /// paths that would have satisfied it — a file created later at one of
+    /// paths that would have satisfied it - a file created later at one of
     /// those paths re-scans exactly the files waiting for it.
     fn create_graph_tables(&self) -> Result<(), StoreError> {
         self.conn
@@ -726,8 +726,8 @@ impl ContextStore {
     /// really is, computed across the project instead of guessed from one
     /// file.
     ///
-    /// Answered from the `deps` index — both edges declared in `IMPORTS:`
-    /// and edges the static scan found — so it costs one index lookup, not
+    /// Answered from the `deps` index - both edges declared in `IMPORTS:`
+    /// and edges the static scan found - so it costs one index lookup, not
     /// a pass over every stored file.
     pub fn importers_of(&self, rel_path: &str) -> Result<Vec<String>, StoreError> {
         self.deps_query(
@@ -818,7 +818,7 @@ impl ContextStore {
         })
     }
 
-    /// Delete entries whose file no longer exists under the root — all of
+    /// Delete entries whose file no longer exists under the root - all of
     /// them, or only those under the directory `under` (root-relative).
     /// Also forgets linked stores that have disappeared. Returns the keys
     /// removed.
@@ -927,7 +927,7 @@ impl ContextStore {
 // ── Path-level operations (VS Code rename/delete events) ─────────────────────
 
 /// Move the context of a renamed or moved file or directory from `from` to
-/// `to` — within one project, or between projects. Context for something
+/// `to` - within one project, or between projects. Context for something
 /// moved out of every project is dropped. Returns how many entries moved.
 pub fn move_context(from: &Path, to: &Path) -> Result<usize, StoreError> {
     let Some(from_root) = project_root_for_file(from) else {
@@ -1395,7 +1395,7 @@ mod tests {
             panic!("expected Found");
         };
         store.adopt("src/copy.rs", "h", &donor).unwrap();
-        // The donor file still exists, so this is a copy — both keep context.
+        // The donor file still exists, so this is a copy - both keep context.
         assert!(store.get(&rel).unwrap().is_some());
         assert_eq!(
             field_value(&store.get("src/copy.rs").unwrap().unwrap().fields, "FILE"),

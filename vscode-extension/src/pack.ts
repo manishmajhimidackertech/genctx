@@ -38,7 +38,7 @@ export function resolveCliBinary(): string {
     }
     return override;
   }
-  // Fall back to plain name — execFile will search PATH.
+  // Fall back to plain name - execFile will search PATH.
   return "genctx";
 }
 
@@ -81,7 +81,7 @@ const MAX_OUTPUT_BYTES = 64 * 1024 * 1024;
 
 /**
  * Environment for CLI calls: the user's `genctx.ollamaUrl`, if set, is passed
- * as GENCTX_OLLAMA_URL — the only way to point genctx at a remote Ollama.
+ * as GENCTX_OLLAMA_URL - the only way to point genctx at a remote Ollama.
  */
 export function cliEnv(): NodeJS.ProcessEnv {
   const url = vscode.workspace.getConfiguration("genctx").get<string>("ollamaUrl", "").trim();
@@ -115,11 +115,11 @@ export async function packFile(filePath: string, withImports = false): Promise<v
         await vscode.env.clipboard.writeText(stdout);
         if (stdout.includes("[no context yet")) {
           void vscode.window.showWarningMessage(
-            "genctx: packed to clipboard, but this file has no context yet — save it, or run `genctx index`"
+            "genctx: packed to clipboard, but this file has no context yet - save it, or run `genctx index`"
           );
         } else {
           void vscode.window.showInformationMessage(
-            "genctx: packed to clipboard — paste into any LLM"
+            "genctx: packed to clipboard - paste into any LLM"
           );
         }
       } catch (err: unknown) {

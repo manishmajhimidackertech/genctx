@@ -47,7 +47,7 @@ const REQUIRED_FIELDS_LEN: usize = REQUIRED_FIELDS.len();
 #[derive(Debug, Clone)]
 pub struct ExtractedContext {
     /// The six-field body, with comment prefixes stripped.
-    /// Does NOT include the version stamp or project header — process.rs adds those.
+    /// Does NOT include the version stamp or project header - process.rs adds those.
     pub body: String,
 
     /// The source file content with the entire comment block removed,
@@ -62,11 +62,11 @@ pub struct ExtractedContext {
 /// Only a block at the top of the file counts: the opening delimiter must be
 /// the first non-blank line, or follow nothing but language-mandated preamble
 /// (a shebang, a Rust `#![…]` attribute, an encoding cookie, `<?php`, …).
-/// Anything further down — an example in documentation, a test fixture — is
+/// Anything further down - an example in documentation, a test fixture - is
 /// ordinary file content and is never touched.
 ///
 /// On success the caller receives a clean (context, source) pair.
-/// On any error the source is left completely untouched — the caller should
+/// On any error the source is left completely untouched - the caller should
 /// fall through to Ollama generation instead.
 pub fn extract_genctx_block(source: &str) -> Result<ExtractedContext, ExtractError> {
     let lines: Vec<&str> = source.lines().collect();
@@ -115,7 +115,7 @@ pub fn extract_genctx_block(source: &str) -> Result<ExtractedContext, ExtractErr
     //
     // The block occupies lines [open_idx..=close_idx].
     // Also consume one blank line immediately after the closing delimiter
-    // if present — that's the blank line the skill file mandates between
+    // if present - that's the blank line the skill file mandates between
     // the closing delimiter and the first real code line.
     let mut remaining: Vec<&str> = Vec::with_capacity(lines.len());
     let after_close = close_idx + 1;
@@ -129,7 +129,7 @@ pub fn extract_genctx_block(source: &str) -> Result<ExtractedContext, ExtractErr
         after_close
     };
 
-    // Everything before the block (if any — normally nothing comes before it).
+    // Everything before the block (if any - normally nothing comes before it).
     remaining.extend_from_slice(&lines[..open_idx]);
     // Everything after the blank separator.
     remaining.extend_from_slice(&lines[code_start..]);
@@ -197,7 +197,7 @@ fn is_preamble(line: &str) -> bool {
 ///
 /// The delimiter strings (`<<<GENCTX`, `GENCTX>>>`) and field names are
 /// ASCII-only and don't contain comment characters, so this stripping is
-/// purely cosmetic — even an imperfect strip leaves valid field lines.
+/// purely cosmetic - even an imperfect strip leaves valid field lines.
 pub fn strip_comment_prefix(line: &str) -> &str {
     let trimmed = line.trim_start();
 

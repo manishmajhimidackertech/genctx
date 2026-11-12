@@ -4,7 +4,7 @@
 // EXPORTS: contentHash()
 // IMPORTS: NONE
 // USED BY: vscode-extension/src/extension.ts
-// NOTES: Uses Node's built-in crypto — no external deps; must produce identical output to the Rust sha2 impl
+// NOTES: Uses Node's built-in crypto - no external deps; must produce identical output to the Rust sha2 impl
 // GENCTX>>>
 
 import { createHash } from "crypto";

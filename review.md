@@ -1,4 +1,4 @@
-# Code Review — genctx
+# Code Review - genctx
 
 **Second pass 2026-10-02 on branch `cleanup/2026-10-02`: the author's fork
 adopted, one bug fixed, the extension tested. 83 Rust tests and 21 extension
@@ -103,7 +103,7 @@ clear role per crate, `unsafe` confined entirely to the Win32 ADS wrapper in `ad
 `unwrap()` outside config and test code, 34 test annotations, `thiserror`/`anyhow` used correctly,
 `tracing` instead of `println!` in the daemon, a bounded semaphore around Ollama calls, and a
 port-fallback bind that reports the port it actually got. The documentation set is excellent, and
-`cpctx` exists specifically because you recognised that ADS data silently dies on an ordinary copy —
+`cpctx` exists specifically because you recognised that ADS data silently dies on an ordinary copy -
 that is the kind of foresight most projects skip.
 
 Two things need attention: the daemon accepts commands from any local process with no authentication,
@@ -115,13 +115,13 @@ and `Cargo.lock` is being ignored in a workspace that ships binaries.
 `handle_connection` (`crates/daemon/src/main.rs:195`) reads newline-delimited JSON and acts on
 `InboundMessage::Save { path, hash }` with no credential check and no validation that `path` is
 inside a known workspace. Binding to `127.0.0.1` limits this to the local machine, which is the right
-first step — but on a desktop, "any local process running as you" includes every npm postinstall
+first step - but on a desktop, "any local process running as you" includes every npm postinstall
 script, every VS Code extension, and anything else you have ever run.
 
 The concrete abuse: scan ports from the documented base port upward, send
 `{"type":"save","path":"C:\\Users\\you\\.ssh\\id_rsa", ...}`, and the daemon will read that file and
 hand its contents to the Ollama endpoint, then write a hidden stream onto it. Whether that is
-"exfiltration" depends on where the configured Ollama endpoint points — which is exactly the sort of
+"exfiltration" depends on where the configured Ollama endpoint points - which is exactly the sort of
 thing that should not depend on configuration.
 
 Two fixes, both straightforward:
@@ -137,7 +137,7 @@ it. That single check turns "read any file on the machine" into "read files in p
 opted in to".
 
 **2. `Cargo.lock` is in `.gitignore`.** For a workspace whose members are binaries, the lock file
-should be committed — that is the Cargo convention precisely because it makes a build reproducible.
+should be committed - that is the Cargo convention precisely because it makes a build reproducible.
 It matters more than usual here: the workspace manifest pins `clap = "=4.4.18"` and
 `zeroize = "=1.8.1"` specifically to keep transitive dependencies off edition2024, with a comment
 saying so. Without the lock file, some *other* transitive dependency makes the same jump and the
@@ -150,7 +150,7 @@ build breaks for the next person who clones, for reasons that have nothing to do
 `cpctx` addresses the copy case directly, which is more than most projects would do. But the failure
 list is longer than copying: the streams are lost when a file is zipped, emailed, uploaded to any
 web service, checked into git and checked out again, synced through OneDrive or Dropbox, or written
-to a FAT32/exFAT USB stick — and in every one of those cases the loss is **silent**. Nothing warns
+to a FAT32/exFAT USB stick - and in every one of those cases the loss is **silent**. Nothing warns
 you; the context is simply gone.
 
 Worth adding: a `genctx doctor` or `genctx verify` command that walks a project and reports which
@@ -165,20 +165,20 @@ in the docs so a user who restarts the daemon does not wonder why a file never g
 
 - `authors = ["genctx"]` in the workspace package is a placeholder. Either put your name there or
   drop the field.
-- The `.context("failed to bind on any port in range {DAEMON_PORT}–{DAEMON_PORT+PORT_RETRY_COUNT}")`
-  at `daemon/src/main.rs:128` uses braces inside a plain string literal, not a format macro — the
+- The `.context("failed to bind on any port in range {DAEMON_PORT}-{DAEMON_PORT+PORT_RETRY_COUNT}")`
+  at `daemon/src/main.rs:128` uses braces inside a plain string literal, not a format macro - the
   message will print the literal `{DAEMON_PORT}` rather than the value. Use `format!` or
   `with_context(|| format!(...))`.
 - `config.rs` holds 10 of the workspace's 16 `unwrap`/`expect` calls. Worth a pass to confirm they are
   all in test code or on genuinely infallible paths.
 - The version is `0.1.0` across a project with three shipped binaries and an extension. Once the
-  named-pipe or token change lands, the extension and daemon must agree on the protocol — bump the
+  named-pipe or token change lands, the extension and daemon must agree on the protocol - bump the
   version and have the daemon reject mismatched clients with a clear message rather than a parse
   warning.
 
 ## Cleanup
 
-Very little to do. `docs/genctx_tracker.md` is a deliberate, documented artifact — the README
+Very little to do. `docs/genctx_tracker.md` is a deliberate, documented artifact - the README
 describes it as the internal dev log to hand to a session resuming work, and it is doing that job.
 Keep it and keep it current. The `println!` usage is confined to the CLI tools where printing is the
 output, and the daemon uses `tracing` properly.
@@ -199,7 +199,7 @@ well-formed.
 ## Notes for a future session
 
 Build with `cargo build --release` from the workspace root; the three binaries land in
-`target/release`. Run the tests with `cargo test --workspace`. Read `docs/genctx_tracker.md` first —
+`target/release`. Run the tests with `cargo test --workspace`. Read `docs/genctx_tracker.md` first -
 it is the project's own current-state document. The `unsafe` in `crates/core/src/ads.rs` is the only
 place memory safety is on you rather than the compiler; every handle opened there needs its
 `CloseHandle`, so review that file as a unit rather than editing individual calls.

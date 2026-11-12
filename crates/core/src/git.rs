@@ -4,7 +4,7 @@
 // EXPORTS: committed_version()
 // IMPORTS: NONE
 // USED BY: crates/core/src/process.rs
-// NOTES: Every failure (no git, not a repo, untracked file) reads as None — callers treat that as "not committed"
+// NOTES: Every failure (no git, not a repo, untracked file) reads as None - callers treat that as "not committed"
 // GENCTX>>>
 
 use std::{path::Path, process::Command};
@@ -52,7 +52,7 @@ mod tests {
     fn reads_head_version_and_ignores_untracked() {
         let dir = TempDir::new().unwrap();
         if !git(dir.path(), &["init", "-q"]) {
-            eprintln!("git not available — skipping");
+            eprintln!("git not available - skipping");
             return;
         }
         let tracked = dir.path().join("tracked.txt");

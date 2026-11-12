@@ -28,7 +28,7 @@ pub enum OllamaError {
     /// Kept strictly separate from `Timeout`: reqwest renders both as
     /// "error sending request for url (...)", so collapsing them into one
     /// variant makes a slow model indistinguishable from a dead server.
-    #[error("Ollama is unreachable at {url} — is `ollama serve` running? ({source})")]
+    #[error("Ollama is unreachable at {url} - is `ollama serve` running? ({source})")]
     Unreachable {
         url: String,
         #[source]
@@ -36,7 +36,7 @@ pub enum OllamaError {
     },
 
     #[error(
-        "Ollama did not respond within {secs}s at {url} — the server is up but the model is \
+        "Ollama did not respond within {secs}s at {url} - the server is up but the model is \
          too slow for this input. Raise `ollama_timeout_secs`, lower `ollama_max_bytes`, or \
          use a smaller model."
     )]
@@ -127,7 +127,7 @@ pub struct GeneratedContext {
 ///
 /// `GENCTX_OLLAMA_URL` wins and may point anywhere: only the user can set
 /// it. `ollama_url` from `gencontext.yaml` comes from the repository, so it
-/// may only name this machine — otherwise cloning a repository and saving a
+/// may only name this machine - otherwise cloning a repository and saving a
 /// file could ship your source code to a server of the repository's choosing.
 pub fn resolve_ollama_url(config: &ProjectConfig) -> Result<String, OllamaError> {
     if let Ok(url) = std::env::var(OLLAMA_URL_ENV) {
@@ -207,7 +207,7 @@ pub struct OllamaClient {
 }
 
 /// Timeout for the cheap `/api/tags` liveness probe. This one *should* be
-/// short — if the server is up it answers instantly.
+/// short - if the server is up it answers instantly.
 const HEALTH_TIMEOUT_SECS: u64 = 10;
 
 impl OllamaClient {
@@ -224,7 +224,7 @@ impl OllamaClient {
     /// Ask Ollama for its installed model list.
     ///
     /// Used as a pre-flight check by `genctx index` so a stopped server fails
-    /// once, immediately, with an accurate message — instead of once per file
+    /// once, immediately, with an accurate message - instead of once per file
     /// after a full timeout each.
     pub async fn list_models(&self, config: &ProjectConfig) -> Result<Vec<String>, OllamaError> {
         let url = format!("{}/api/tags", resolve_ollama_url(config)?);
@@ -318,7 +318,7 @@ impl OllamaClient {
             return Err(OllamaError::HttpError { status, body });
         }
 
-        // The deadline covers the body too — a stalled read here is still a
+        // The deadline covers the body too - a stalled read here is still a
         // timeout, not a parse failure.
         let parsed: GenerateResponse = resp.json().await.map_err(|e| {
             if e.is_timeout() {
@@ -343,8 +343,8 @@ impl OllamaClient {
 
 /// Turn the model's answer into the six field lines, or explain why not.
 ///
-/// JSON is expected (`format: "json"`), but a `KEY: value` answer — what an
-/// older Ollama that ignores `format` tends to produce — is accepted too.
+/// JSON is expected (`format: "json"`), but a `KEY: value` answer - what an
+/// older Ollama that ignores `format` tends to produce - is accepted too.
 /// `FILE:` is always the real path and `USED BY:` is always `UNKNOWN`: the
 /// model sees one file and cannot know either; `USED BY` is computed from the
 /// other files' `IMPORTS` when context is packed.

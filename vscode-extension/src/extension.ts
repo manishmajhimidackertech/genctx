@@ -1,6 +1,6 @@
 // <<<GENCTX
 // FILE: vscode-extension/src/extension.ts
-// ROLE: VS Code extension entry point — wires save/rename/delete listeners, daemon client, status bar, and commands
+// ROLE: VS Code extension entry point - wires save/rename/delete listeners, daemon client, status bar, and commands
 // EXPORTS: activate(), deactivate()
 // IMPORTS: vscode-extension/src/daemon.ts, vscode-extension/src/statusBar.ts, vscode-extension/src/pack.ts, vscode-extension/src/hash.ts, vscode-extension/src/graphView.ts
 // USED BY: VS Code extension host
@@ -58,7 +58,7 @@ export function activate(context: vscode.ExtensionContext): void {
     const notFound = err.message.includes("ENOENT");
     void vscode.window.showWarningMessage(
       notFound
-        ? "genctx: could not start the daemon — `genctxd` is not on your PATH. Install it, or set `genctx.daemonPath`."
+        ? "genctx: could not start the daemon - `genctxd` is not on your PATH. Install it, or set `genctx.daemonPath`."
         : `genctx: could not start the daemon: ${err.message}`
     );
   });
@@ -239,7 +239,7 @@ export function activate(context: vscode.ExtensionContext): void {
   );
 }
 
-// deactivate() is intentionally empty — DaemonClient.dispose() is called via
+// deactivate() is intentionally empty - DaemonClient.dispose() is called via
 // context.subscriptions, which VS Code drains on deactivation.
 export function deactivate(): void {}
 
@@ -269,7 +269,7 @@ async function runCliInit(): Promise<void> {
   const root = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
   if (!root) {
     void vscode.window.showErrorMessage(
-      "genctx: no workspace folder open — cannot run init"
+      "genctx: no workspace folder open - cannot run init"
     );
     return;
   }

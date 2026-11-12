@@ -1,10 +1,10 @@
 // <<<GENCTX
 // FILE: crates/core/src/process.rs
-// ROLE: Keystone decision function — ignore check, resume gate, block extraction or Ollama, then write the context store
+// ROLE: Keystone decision function - ignore check, resume gate, block extraction or Ollama, then write the context store
 // EXPORTS: process_file(), plan(), content_hash(), Plan, ProcessOptions, ProcessResult, ProcessSource, ProcessError
 // IMPORTS: crates/core/src/store.rs, crates/core/src/config.rs, crates/core/src/extract.rs, crates/core/src/ollama.rs, crates/core/src/filter.rs, crates/core/src/fsutil.rs, crates/core/src/git.rs
 // USED BY: crates/daemon/src/main.rs, crates/cli/src/main.rs
-// NOTES: Daemon and CLI must call this function — never reimplement the branch logic themselves
+// NOTES: Daemon and CLI must call this function - never reimplement the branch logic themselves
 // GENCTX>>>
 
 use std::path::{Path, PathBuf};
@@ -111,7 +111,7 @@ impl ProcessOptions {
         }
     }
 
-    /// Ignore stored context *and* bypass extraction — always call Ollama.
+    /// Ignore stored context *and* bypass extraction - always call Ollama.
     pub fn force_ollama() -> Self {
         Self {
             force_ollama: true,
@@ -198,7 +198,7 @@ pub fn plan(path: &Path, opts: ProcessOptions) -> Result<Plan, ProcessError> {
 /// project's context store.
 ///
 /// This is the single authoritative decision function.  Both the daemon's
-/// save handler and the CLI's `index`/`extract` commands call this — they
+/// save handler and the CLI's `index`/`extract` commands call this - they
 /// never reimplement the branch logic themselves. The decisions live in
 /// [`prepare`], which [`plan`] shares.
 ///
@@ -234,7 +234,7 @@ pub async fn process_file(
             info!(
                 ?path,
                 from = %donor.context.rel_path,
-                "identical content already had context — carried over"
+                "identical content already had context - carried over"
             );
             Ok(ProcessResult {
                 source: ProcessSource::Reused,
@@ -253,7 +253,7 @@ pub async fn process_file(
                 record_graph(&store, path, &rel_path, &source, None);
                 info!(
                     ?path,
-                    "<<<GENCTX block is committed in git — stored, left in file"
+                    "<<<GENCTX block is committed in git - stored, left in file"
                 );
                 return Ok(ProcessResult {
                     source: ProcessSource::ExtractedKept,
@@ -261,7 +261,7 @@ pub async fn process_file(
                 });
             }
 
-            info!(?path, "extracted <<<GENCTX block — Ollama skipped");
+            info!(?path, "extracted <<<GENCTX block - Ollama skipped");
             // The hash must describe the file as it will exist *after* the
             // block is stripped, since that is what the next run reads.
             let cleaned_hash = content_hash(&extracted.cleaned_source);
@@ -271,7 +271,7 @@ pub async fn process_file(
             // write then failed, leaving the file with neither.
             store.put(&rel_path, &cleaned_hash, "llm", &fields)?;
 
-            // Now it is safe to strip the block from the source file —
+            // Now it is safe to strip the block from the source file -
             // atomically, so a crash can never leave it half-written.
             fsutil::replace_file(path, extracted.cleaned_source.as_bytes()).map_err(|e| {
                 ProcessError::WriteSource {
@@ -355,10 +355,10 @@ fn prepare(path: &Path, opts: ProcessOptions) -> Result<Prepared, ProcessError> 
     // ── 1. Project, config and ignore rules ───────────────────────────────────
     // Decided before anything is read or created: a file outside every
     // project, or one `genctx index` would skip (.gitignore, genctx_ignore,
-    // hidden files like .env), is never read, sent to Ollama or stored —
+    // hidden files like .env), is never read, sent to Ollama or stored -
     // whichever entry point it arrived through.
     let Some(root) = store::project_root_for_file(path) else {
-        debug!(?path, "not inside a genctx project — skipping");
+        debug!(?path, "not inside a genctx project - skipping");
         return Ok(Prepared::Skip(ProcessSource::SkippedNoProject));
     };
     let config = match config::load_config_for_file(path) {
@@ -370,7 +370,7 @@ fn prepare(path: &Path, opts: ProcessOptions) -> Result<Prepared, ProcessError> 
         }
     };
     if filter::is_ignored(&root, path, &config.genctx_ignore) {
-        debug!(?path, "ignored by .gitignore/genctx_ignore — skipping");
+        debug!(?path, "ignored by .gitignore/genctx_ignore - skipping");
         return Ok(Prepared::Skip(ProcessSource::SkippedIgnored));
     }
 
@@ -378,7 +378,7 @@ fn prepare(path: &Path, opts: ProcessOptions) -> Result<Prepared, ProcessError> 
     let source = match std::fs::read_to_string(path) {
         Ok(s) => s,
         Err(e) if e.kind() == std::io::ErrorKind::InvalidData => {
-            // Non-UTF-8 file (binary, image, etc.) — skip silently.
+            // Non-UTF-8 file (binary, image, etc.) - skip silently.
             debug!(?path, "skipping non-UTF-8 file");
             return Ok(Prepared::Skip(ProcessSource::SkippedUnreadable));
         }
@@ -418,13 +418,13 @@ fn prepare(path: &Path, opts: ProcessOptions) -> Result<Prepared, ProcessError> 
             Ok(Lookup::Current(_)) => {
                 debug!(
                     ?path,
-                    "stored context already current for this content — skipping"
+                    "stored context already current for this content - skipping"
                 );
                 return Ok(ready(Step::UpToDate));
             }
             Ok(Lookup::Found(donor)) => return Ok(ready(Step::Reuse(donor))),
             Ok(Lookup::Stale(_) | Lookup::Missing) => {}
-            Err(e) => warn!(?path, "could not check stored context ({e}) — regenerating"),
+            Err(e) => warn!(?path, "could not check stored context ({e}) - regenerating"),
         }
     }
 
@@ -433,13 +433,13 @@ fn prepare(path: &Path, opts: ProcessOptions) -> Result<Prepared, ProcessError> 
         match extract::extract_genctx_block(&source) {
             Ok(extracted) => return Ok(ready(Step::Extract(extracted))),
             Err(ExtractError::NoDelimiter) => {
-                // Normal hand-written file — fall through to Ollama.
+                // Normal hand-written file - fall through to Ollama.
             }
             Err(e) => {
                 // Block was found but is malformed.  Log and fall through.
                 warn!(
                     ?path,
-                    "malformed <<<GENCTX block ({e}) — falling back to Ollama"
+                    "malformed <<<GENCTX block ({e}) - falling back to Ollama"
                 );
             }
         }
@@ -448,13 +448,13 @@ fn prepare(path: &Path, opts: ProcessOptions) -> Result<Prepared, ProcessError> 
     // ── 5. Ollama size gates ──────────────────────────────────────────────────
     let line_count = source.lines().count();
     if line_count < MIN_LINES_FOR_OLLAMA {
-        debug!(?path, line_count, "skipping Ollama — file too small");
+        debug!(?path, line_count, "skipping Ollama - file too small");
         return Ok(Prepared::Skip(ProcessSource::SkippedTooSmall));
     }
 
     // Upper bound too. A small local model has a context window of a few
     // thousand tokens, so a large file gets silently truncated server-side and
-    // yields a useless answer — after a very long wait that usually ends in a
+    // yields a useless answer - after a very long wait that usually ends in a
     // timeout. Skipping is faster and tells the truth.
     let max_bytes = config.ollama_max_bytes_or_default();
     if source.len() > max_bytes {
@@ -462,7 +462,7 @@ fn prepare(path: &Path, opts: ProcessOptions) -> Result<Prepared, ProcessError> 
             ?path,
             bytes = source.len(),
             max_bytes,
-            "skipping Ollama — file exceeds ollama_max_bytes"
+            "skipping Ollama - file exceeds ollama_max_bytes"
         );
         return Ok(Prepared::Skip(ProcessSource::SkippedTooLarge));
     }
@@ -491,7 +491,7 @@ fn skipped(source: ProcessSource) -> ProcessResult {
 }
 
 /// True when the version of `path` committed at HEAD already starts with an
-/// `<<<GENCTX` block — i.e. the block is part of the repository, not
+/// `<<<GENCTX` block - i.e. the block is part of the repository, not
 /// something an LLM just wrote.
 fn block_is_committed(path: &Path) -> bool {
     git::committed_version(path)
@@ -610,7 +610,7 @@ def main():
         assert!(ctx.fields.contains("ROLE: Entry point"));
         // FILE is always the real path, whatever the block claimed.
         assert!(ctx.fields.starts_with("FILE: app/main.py\n"));
-        // The project header is never stored — it is rendered at pack time.
+        // The project header is never stored - it is rendered at pack time.
         assert!(!ctx.fields.contains("PROJECT:"));
         assert_eq!(ctx.content_hash, content_hash(&cleaned));
         assert_eq!(ctx.source, "llm");
@@ -717,7 +717,7 @@ def main():
                 .unwrap_or(false)
         };
         if !git(&["init", "-q"]) {
-            eprintln!("git not available — skipping");
+            eprintln!("git not available - skipping");
             return;
         }
         assert!(git(&["add", "."]));

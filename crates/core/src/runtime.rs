@@ -13,7 +13,7 @@
 //! anything), and writes `{port, token, pid, version}` to a file only the
 //! current user can read. A client must present the token before the daemon
 //! will act on anything it sends, so other users and processes that cannot
-//! read the file cannot drive the daemon — and a client never talks to some
+//! read the file cannot drive the daemon - and a client never talks to some
 //! other program that happens to hold a well-known port.
 //!
 //! Location (the VS Code extension computes the same path):

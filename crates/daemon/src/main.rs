@@ -1,6 +1,6 @@
 // <<<GENCTX
 // FILE: crates/daemon/src/main.rs
-// ROLE: Background daemon — authenticated local socket for editor saves/renames/deletes; extracts immediately, debounces Ollama
+// ROLE: Background daemon - authenticated local socket for editor saves/renames/deletes; extracts immediately, debounces Ollama
 // EXPORTS: NONE (binary)
 // IMPORTS: crates/core/src/process.rs, crates/core/src/store.rs, crates/core/src/runtime.rs, crates/core/src/ollama.rs, crates/core/src/config.rs
 // USED BY: UNKNOWN
@@ -149,7 +149,7 @@ async fn main() -> Result<()> {
             }
             "-h" | "--help" => {
                 println!(
-                    "genctxd {} — genctx background daemon\n\n\
+                    "genctxd {} - genctx background daemon\n\n\
                      Usage: genctxd\n\n\
                      Usually started by the VS Code extension. Listens on 127.0.0.1 and\n\
                      publishes its port and token in a per-user discovery file.\n\n\
@@ -178,7 +178,7 @@ async fn main() -> Result<()> {
     if let Some(existing) = runtime::read_daemon_info() {
         if is_alive(&existing).await {
             info!(
-                "genctxd is already running (pid {}, port {}) — nothing to do",
+                "genctxd is already running (pid {}, port {}) - nothing to do",
                 existing.pid, existing.port
             );
             return Ok(());
@@ -344,12 +344,12 @@ async fn handle_connection(stream: TcpStream, daemon: Arc<Daemon>) -> Result<()>
             Ok(InboundMessage::Delete { path }) => {
                 match store::forget_context(&PathBuf::from(&path)) {
                     Ok(0) => {}
-                    Ok(n) => info!("{path}: deleted — dropped context for {n} file(s)"),
+                    Ok(n) => info!("{path}: deleted - dropped context for {n} file(s)"),
                     Err(e) => warn!("{path}: could not drop context: {e}"),
                 }
             }
             Ok(InboundMessage::Hello { .. }) => {}
-            Err(e) => warn!("unrecognised message: {e} — raw: {line}"),
+            Err(e) => warn!("unrecognised message: {e} - raw: {line}"),
         }
     }
 
@@ -406,7 +406,7 @@ async fn handle_save(
             return;
         }
         Plan::Reuse | Plan::Extract => {
-            info!(?path, ?plan, "no model needed — processing immediately");
+            info!(?path, ?plan, "no model needed - processing immediately");
             run(&path, &daemon, &send).await;
             forget_save(&daemon, &path, &hash).await;
             return;
@@ -414,7 +414,7 @@ async fn handle_save(
         Plan::Generate => {}
     }
 
-    // ── Ollama branch — debounce + bounded concurrency ────────────────────────
+    // ── Ollama branch - debounce + bounded concurrency ────────────────────────
     send(StatusState::Queued, None);
     sleep(Duration::from_secs(OLLAMA_DEBOUNCE_SECS)).await;
 
@@ -470,7 +470,7 @@ fn matches_saved(on_disk: &str, saved_hash: &str) -> bool {
             .is_some_and(|text| process::content_hash(text) == saved_hash)
 }
 
-/// Drop the debounce entry once its save has been handled — unless a newer
+/// Drop the debounce entry once its save has been handled - unless a newer
 /// save for the same path has arrived meanwhile.
 async fn forget_save(daemon: &Daemon, path: &PathBuf, hash: &str) {
     let mut map = daemon.latest_save.lock().await;
@@ -506,7 +506,7 @@ async fn check_for_update(daemon: Arc<Daemon>) {
     let resp = match http.get(RELEASES_URL).send().await {
         Ok(r) => r,
         Err(e) => {
-            // Network unavailable or GitHub unreachable — not an error worth logging
+            // Network unavailable or GitHub unreachable - not an error worth logging
             // loudly, since many dev machines are air-gapped or behind strict firewalls.
             info!("update check: skipped ({e})");
             return;
@@ -551,7 +551,7 @@ async fn check_for_update(daemon: Arc<Daemon>) {
 
 /// Returns true if `candidate` is strictly newer than `current`.
 /// Simple numeric comparison on `major.minor.patch` components;
-/// ignores pre-release suffixes (conservative — treats them as equal).
+/// ignores pre-release suffixes (conservative - treats them as equal).
 fn is_newer(candidate: &str, current: &str) -> bool {
     parse_semver(candidate) > parse_semver(current)
 }
@@ -608,7 +608,7 @@ mod tests {
 
     #[test]
     fn semver_ignores_prerelease_suffix() {
-        // "0.2.0-beta" should parse as (0,2,0) — not crash
+        // "0.2.0-beta" should parse as (0,2,0) - not crash
         assert_eq!(parse_semver("0.2.0-beta"), (0, 2, 0));
     }
 

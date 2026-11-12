@@ -1,12 +1,12 @@
 # Rebuilding after a source update
 
 **genctx is in the testing phase, and there is no auto-update.** Editing the
-source does nothing on its own — `genctx`, `genctxd`, and `cpctx` are compiled
+source does nothing on its own - `genctx`, `genctxd`, and `cpctx` are compiled
 binaries, and the ones already on your PATH keep running the old code until you
 rebuild *and* replace them.
 
 This is easy to miss because a stale binary does not announce itself. It reads
-your **new** `gencontext.yaml` quite happily — `ProjectConfig` does not use
+your **new** `gencontext.yaml` quite happily - `ProjectConfig` does not use
 `deny_unknown_fields`, so unknown keys like `ollama_timeout_secs` are silently
 ignored while known ones like `ollama_concurrency` still apply. The result is a
 run that looks partly updated, behaves entirely like the old build, and gives
@@ -48,7 +48,7 @@ Use `--release` for anything you actually intend to use. A `debug` build of the
 Ollama path is markedly slower, which matters when you are already close to the
 generation timeout.
 
-**The build must end in `Finished`.** If it ends in `error:`, stop here — step 4
+**The build must end in `Finished`.** If it ends in `error:`, stop here - step 4
 would otherwise copy a stale binary from a previous successful build and you
 would be debugging code that is not running.
 
@@ -56,7 +56,7 @@ would be debugging code that is not running.
 
 Parts of this codebase are `#[cfg(target_os = "windows")]`. Code inside those
 blocks is invisible to a Linux or macOS build, so a warning-free build on
-another platform does **not** guarantee a clean Windows build — and vice versa.
+another platform does **not** guarantee a clean Windows build - and vice versa.
 The `bail!` import in `crates/cpctx/src/main.rs` is exactly this: used only by
 the Windows PATH-setup code, so it reads as an unused import elsewhere.
 
@@ -114,10 +114,10 @@ where.exe genctx
 `where.exe` lists **every** match in PATH order. The first line is what runs
 when you type `genctx`.
 
-- **If the first line is `...\genctx\target\release\genctx.exe`** — you are done,
+- **If the first line is `...\genctx\target\release\genctx.exe`** - you are done,
   the fresh build is already what runs.
-- **If it is anywhere else** — typically `%USERPROFILE%\.cargo\bin\` from a
-  `cargo install`, or a copy placed by `cpctx setup` — that stale binary is
+- **If it is anywhere else** - typically `%USERPROFILE%\.cargo\bin\` from a
+  `cargo install`, or a copy placed by `cpctx setup` - that stale binary is
   shadowing your build. Overwrite it:
 
 ```powershell
@@ -131,7 +131,7 @@ If `where.exe` returns nothing at all, run `cpctx setup` once to register the
 directory on your PATH permanently, then open a **new** terminal.
 
 > A terminal captures PATH when it starts. After any PATH change, an already-open
-> terminal keeps the old value — open a fresh one.
+> terminal keeps the old value - open a fresh one.
 
 ---
 
@@ -155,7 +155,7 @@ The first line should read:
 INFO genctx: indexing . with up to 1 concurrent Ollama jobs (timeout 300s, max 16384 bytes per file)
 ```
 
-If the `(timeout ...)` suffix is missing, you are still running an old binary —
+If the `(timeout ...)` suffix is missing, you are still running an old binary -
 go back to step 4.
 
 A second, faster check: stop Ollama and run `genctx index`. A current build
@@ -199,10 +199,10 @@ genctx index --help                       # 5. verify (--force present)
 
 | What you see | What it means |
 |---|---|
-| Log line lacks `(timeout Ns, max N bytes)` | Old binary still on PATH — step 4 |
-| `Ollama is unreachable ... error sending request` with no `is \`ollama serve\` running?` | Old binary — the new message names the timeout explicitly |
+| Log line lacks `(timeout Ns, max N bytes)` | Old binary still on PATH - step 4 |
+| `Ollama is unreachable ... error sending request` with no `is \`ollama serve\` running?` | Old binary - the new message names the timeout explicitly |
 | Summary lacks `already current` / `too large` counts | Old binary |
-| One error per file instead of one for the whole run | Old binary — pre-flight is missing |
+| One error per file instead of one for the whole run | Old binary - pre-flight is missing |
 | Every file regenerates despite no edits | Context written by a pre-hash binary has no `HASH:` field and is treated as unknown. Expect one full pass, then resume works |
-| `Access is denied` copying the exe | A process still holds it — step 1 |
+| `Access is denied` copying the exe | A process still holds it - step 1 |
 | `genctx` not found in a new terminal | `cpctx setup` not run, or terminal predates the PATH change |

@@ -20,7 +20,7 @@ test("hashes the empty string to the SHA-256 empty digest", () => {
 test("hashes the UTF-8 bytes, not UTF-16 code units", () => {
   // 68 c3 a9 6c 6c 6f 20 e2 80 94 20 e2 9c 93 0d 0a, hashed by sha256sum.
   assert.equal(
-    contentHash("héllo — ✓\r\n"),
+    contentHash("h\u00e9llo \u2014 \u2713\r\n"),
     "232bb729048dfc77ee393b74f45d3d31dfb2b2f2ed51292230fe66296c29c7cd"
   );
 });

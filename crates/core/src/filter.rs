@@ -11,7 +11,7 @@
 //!
 //! The walker prunes whole directories as it goes; the daemon only ever sees
 //! single saved files, so it needs the same answer for one path. Both now go
-//! through `process_file()`, which calls [`is_ignored`] — a file that `index`
+//! through `process_file()`, which calls [`is_ignored`] - a file that `index`
 //! would skip is never read, sent to Ollama or stored because it was saved.
 
 use std::path::{Path, PathBuf};
@@ -154,7 +154,7 @@ pub fn project_walker(
     walker.overrides(overrides.build().map_err(|e| e.to_string())?);
 
     // Hidden-file filtering already skips the store on most platforms, but
-    // Windows decides "hidden" by attribute — so exclude it explicitly.
+    // Windows decides "hidden" by attribute - so exclude it explicitly.
     walker.filter_entry(|e| {
         e.file_name() != crate::store::STORE_DIR && e.file_name() != crate::store::LEGACY_STORE_DIR
     });

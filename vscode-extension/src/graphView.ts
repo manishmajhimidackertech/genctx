@@ -1,6 +1,6 @@
 // <<<GENCTX
 // FILE: vscode-extension/src/graphView.ts
-// ROLE: The code graph webview — loads `genctx graph --json`, follows the active editor, refreshes on file changes, opens/packs files on request
+// ROLE: The code graph webview - loads `genctx graph --json`, follows the active editor, refreshes on file changes, opens/packs files on request
 // EXPORTS: GraphPanel
 // IMPORTS: vscode-extension/src/pack.ts, vscode-extension/src/graphPaths.ts, vscode-extension/src/graphHtml.ts
 // USED BY: vscode-extension/src/extension.ts
@@ -148,7 +148,7 @@ export class GraphPanel implements vscode.Disposable {
       );
       const data = JSON.parse(stdout) as GraphData;
       this.root = data.root;
-      this.panel.title = `Code Graph — ${data.nodes.length} files`;
+      this.panel.title = `Code Graph - ${data.nodes.length} files`;
       void this.panel.webview.postMessage({
         type: "graph",
         data,

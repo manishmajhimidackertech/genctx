@@ -4,7 +4,7 @@
 // EXPORTS: read_ads(), write_ads(), ads_exists(), clear_ads(), AdsError
 // IMPORTS: NONE
 // USED BY: crates/core/src/migrate.rs, crates/cli/src/main.rs
-// NOTES: Windows/NTFS only — every public function returns Err(AdsError::NotSupported) on non-Windows
+// NOTES: Windows/NTFS only - every public function returns Err(AdsError::NotSupported) on non-Windows
 // GENCTX>>>
 
 //! Where genctx (then named llmctx) used to keep context before the project store
@@ -43,7 +43,7 @@ pub enum AdsError {
         source: std::io::Error,
     },
 
-    #[error("ADS version mismatch (found {found}, expected {expected}) — regenerating")]
+    #[error("ADS version mismatch (found {found}, expected {expected}) - regenerating")]
     VersionMismatch { found: u32, expected: u32 },
 
     #[error("ADS content is empty")]
@@ -67,7 +67,7 @@ pub fn ads_exists(path: &std::path::Path) -> Result<bool, AdsError> {
 
 /// Reads the raw context string from the ADS stream.
 /// Returns `Err(AdsError::VersionMismatch)` if the first line shows a different
-/// version — callers should treat this exactly like `Err(AdsError::Empty)` and
+/// version - callers should treat this exactly like `Err(AdsError::Empty)` and
 /// regenerate.
 pub fn read_ads(path: &std::path::Path) -> Result<String, AdsError> {
     #[cfg(target_os = "windows")]
@@ -170,7 +170,7 @@ mod windows_impl {
             source: std::io::Error::from_raw_os_error(e.code().0),
         })?;
 
-        // Read in chunks up to 64 KB — context blocks are tiny.
+        // Read in chunks up to 64 KB - context blocks are tiny.
         let mut buf = vec![0u8; 65536];
         let mut bytes_read: u32 = 0;
         unsafe {
@@ -256,7 +256,7 @@ mod windows_impl {
             }
             Ok(())
         } else {
-            // No version line at all — treat as mismatch so it gets regenerated.
+            // No version line at all - treat as mismatch so it gets regenerated.
             Err(AdsError::VersionMismatch {
                 found: 0,
                 expected: ADS_VERSION,

@@ -1,7 +1,7 @@
 # Using genctx on a real project
 
 This walks through everything from "I just built genctx" to "I use this every day without
-thinking about it," using an actual project — **CodeA4** — as the example throughout.
+thinking about it," using an actual project - **CodeA4** - as the example throughout.
 Swap in your own paths and file names as you go.
 
 CodeA4's layout, for reference:
@@ -27,7 +27,7 @@ CodeA4/
 ```
 
 This assumes you've already followed the [Installation](../README.md#installation) steps
-in the main README — `genctxd`, `genctx`, and `cpctx` are on your PATH, and the VS Code
+in the main README - `genctxd`, `genctx`, and `cpctx` are on your PATH, and the VS Code
 extension is installed.
 
 ---
@@ -42,7 +42,7 @@ genctx init
 ```
 
 This writes an empty `gencontext.yaml` template (you can also trigger this from VS Code
-via `genctx: Open gencontext.yaml` in the Command Palette). Fill in the top three fields —
+via `genctx: Open gencontext.yaml` in the Command Palette). Fill in the top three fields -
 these are the only ones that get read on every single context generation, so it's worth
 getting them right:
 
@@ -52,7 +52,7 @@ stack: "Python, Flask-style app.py/api/jobs, Docker Compose, Pillow/cairosvg-sty
 task: "Building the code-clustering render pipeline"
 
 conventions:
-  - "API route handlers live under backend/api/, never touch the DB directly — go through models.py"
+  - "API route handlers live under backend/api/, never touch the DB directly - go through models.py"
   - "Background work goes through backend/jobs/, dispatched via worker.py"
 
 genctx_ignore:
@@ -61,7 +61,7 @@ genctx_ignore:
   - "**/*.pyc"
 ```
 
-Adjust `stack` and `conventions` to what's actually true of your codebase — the daemon
+Adjust `stack` and `conventions` to what's actually true of your codebase - the daemon
 sends this verbatim to Ollama on every generation, so accuracy here directly improves the
 quality of every context block it writes. `backend/data/` is a good `genctx_ignore`
 candidate since it looks like a runtime/output directory rather than source.
@@ -93,8 +93,8 @@ run `genctxd` in a terminal instead.
 
 ## 3. Backfill context for existing files
 
-CodeA4 already has real code in it — `backend/pipeline/clustering.py`,
-`backend/api/render.py`, and so on — none of which has ever seen genctx. Rather than
+CodeA4 already has real code in it - `backend/pipeline/clustering.py`,
+`backend/api/render.py`, and so on - none of which has ever seen genctx. Rather than
 waiting for each file to be saved individually, backfill everything in one pass:
 
 ```powershell
@@ -109,7 +109,7 @@ This walks every file under the project root (respecting `.gitignore` and your
 
 For a project the size of CodeA4's `backend/`, expect this to take a minute or two the
 first time, since every `.py` file goes through Ollama once. Run it again any time and
-it's fast — files that haven't changed are skipped via content hash.
+it's fast - files that haven't changed are skipped via content hash.
 
 ---
 
@@ -133,12 +133,12 @@ also edit it.
 
 ### An LLM writes a file for you
 
-If you're asking Claude, ChatGPT, or another LLM to write or extend a file — say, adding
-a new step to `backend/pipeline/glyph_assets.py` — paste the contents of
+If you're asking Claude, ChatGPT, or another LLM to write or extend a file - say, adding
+a new step to `backend/pipeline/glyph_assets.py` - paste the contents of
 [`docs/genctx.md`](genctx.md) into that conversation first (or add it as a project/system
 instruction if your tool supports one). The LLM will emit an `<<<GENCTX` block at the top
 of the file it writes. When you save that file, the daemon recognizes the block and
-extracts it **instantly** — no Ollama call, no 30-second wait, and no comment left behind
+extracts it **instantly** - no Ollama call, no 30-second wait, and no comment left behind
 in the file on disk.
 
 ---
@@ -178,7 +178,7 @@ NOTES: Runs inside the Celery-style worker.py process, not the web process
 <the actual file contents>
 ```
 
-The LLM gets the full picture in one paste — no separate "let me explain the codebase"
+The LLM gets the full picture in one paste - no separate "let me explain the codebase"
 message needed. The PROJECT/TASK lines always come from today's `gencontext.yaml`, so
 changing `task:` shows up in the very next pack. `USED BY` lists the files that import
 this one, from the project's dependency graph.
@@ -186,7 +186,7 @@ this one, from the project's dependency graph.
 Two more ways to hand context over:
 
 - **Pack current file with the context of its imports** (Command Palette, or
-  `genctx pack <file> --with-imports`) adds the context — not the source — of every
+  `genctx pack <file> --with-imports`) adds the context - not the source - of every
   project file it imports, so the LLM knows what `render_svg.py` and `pdf_export.py` do
   without you pasting them.
 - **Copy project map to clipboard** (or `genctx map`) gives one line per file with its
@@ -206,7 +206,7 @@ Run **genctx: Show code graph** (Command Palette, or right-click a folder in the
 Every file is a dot and every import a link, laid out like Obsidian's graph view. Hover
 `render_jobs.py` to see what it pulls in and who calls it; click a dot to open the file;
 Shift+click to pack it with its imports. Tick **Local** to see only the neighbourhood of
-the file you have open — it follows you as you switch editors. Colour by **Context** to
+the file you have open - it follows you as you switch editors. Colour by **Context** to
 spot files whose context is stale or still missing.
 
 ---
@@ -252,42 +252,42 @@ the project root to move that context into the store instead of regenerating it.
 
 ## 8. Quick troubleshooting
 
-- **Status bar stuck on `$(warning)`** — Ollama isn't running, or is running but no model
-  has been pulled. Check Task Manager for `ollama.exe`, then run `ollama list` — if
+- **Status bar stuck on `$(warning)`** - Ollama isn't running, or is running but no model
+  has been pulled. Check Task Manager for `ollama.exe`, then run `ollama list` - if
   `phi3:mini` (or whatever `ollama_model` is set to in `gencontext.yaml`) isn't listed,
   run `ollama pull phi3:mini` and save the file again. See "Installing Ollama" in the
   main [README](../README.md#installing-ollama-step-by-step) if Ollama isn't installed at
-  all — installing Ollama and pulling a model are two separate steps, and it's easy to do
+  all - installing Ollama and pulling a model are two separate steps, and it's easy to do
   the first without the second.
-- **`genctx index` reports timeouts** — Ollama is running (index pre-flights the server
+- **`genctx index` reports timeouts** - Ollama is running (index pre-flights the server
   before doing any work and would have refused to start otherwise), it's just slower than
   `ollama_timeout_secs` allows for those files. Raise that value, lower `ollama_max_bytes`,
   or switch to a smaller model. Re-running `genctx index` retries only the files that
   failed, since everything already done is skipped by content hash.
-- **Files reported as "too large"** — they exceed `ollama_max_bytes` (16 KB by default).
+- **Files reported as "too large"** - they exceed `ollama_max_bytes` (16 KB by default).
   A small model's context window is only a few thousand tokens, so a bigger file gets
   truncated server-side and produces a useless answer after a long wait. Add such files to
   `genctx_ignore`, or raise the limit if your model can handle it.
-- **Context missing entirely after a copy** — the `.genctx\` folder didn't come along.
+- **Context missing entirely after a copy** - the `.genctx\` folder didn't come along.
   Either the files were copied without the project root (use `cpctx copy` for that), or
   the project came from `git clone`. Run `genctx index` at the destination.
-- **Stale entries for deleted or renamed files** — the next `genctx index` removes them;
+- **Stale entries for deleted or renamed files** - the next `genctx index` removes them;
   `genctx gc` does just that step.
-- **`refusing to send source to …`** — `ollama_url` in `gencontext.yaml` points at another
+- **`refusing to send source to …`** - `ollama_url` in `gencontext.yaml` points at another
   machine, which a repository's config isn't allowed to do. Set `GENCTX_OLLAMA_URL` (or
   `genctx.ollamaUrl` in your VS Code user settings) instead.
-- **Status bar stuck on `$(plug) genctx`** — the extension can't reach the daemon. If it
+- **Status bar stuck on `$(plug) genctx`** - the extension can't reach the daemon. If it
   said it couldn't start `genctxd`, put the binary on your PATH or set
   `genctx.daemonPath`.
-- **A block stayed in the file** — it's committed in git, so genctx stored it but left it
+- **A block stayed in the file** - it's committed in git, so genctx stored it but left it
   in place rather than change everyone's working tree. Remove it in a commit if you'd
   rather it lived only in the store.
-- **A source fix seems to have had no effect** — you almost certainly did not
+- **A source fix seems to have had no effect** - you almost certainly did not
   rebuild, or rebuilt but left an older binary earlier on your PATH. Confirm with
   `where.exe genctx`, and check that `genctx index`'s first log line ends with
   `(timeout Ns, max N bytes per file)`. Full steps in
   [`REBUILDING.md`](REBUILDING.md).
-- **`genctx` not found in a new terminal** — you built the binaries but never ran
+- **`genctx` not found in a new terminal** - you built the binaries but never ran
   `cpctx setup`, or you're in a terminal that predates it. Open a fresh terminal after
   running setup.
 

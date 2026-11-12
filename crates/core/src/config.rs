@@ -4,7 +4,7 @@
 // EXPORTS: ProjectConfig, ConfigError, find_config(), load_config(), load_config_for_file(), CONFIG_FILENAME
 // IMPORTS: NONE
 // USED BY: crates/core/src/process.rs, crates/cli/src/main.rs
-// NOTES: Resolution mirrors .gitignore semantics — nearest ancestor wins; no global state
+// NOTES: Resolution mirrors .gitignore semantics - nearest ancestor wins; no global state
 // GENCTX>>>
 
 use std::path::{Path, PathBuf};
@@ -43,7 +43,7 @@ pub enum ConfigError {
 ///
 /// All fields are optional so a minimal config (just `project:`) is valid.
 /// The daemon and CLI fill in blanks with empty strings when building
-/// prompts — they never fail on a sparse config.
+/// prompts - they never fail on a sparse config.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct ProjectConfig {
     /// Human-readable project name.
@@ -56,7 +56,7 @@ pub struct ProjectConfig {
     #[serde(default)]
     pub conventions: Vec<String>,
 
-    /// Current task or sprint goal — injected into every Ollama prompt.
+    /// Current task or sprint goal - injected into every Ollama prompt.
     pub task: Option<String>,
 
     /// Additional glob patterns (relative to the config file) for files
@@ -81,7 +81,7 @@ pub struct ProjectConfig {
     ///
     /// This is a *per-request* budget, not a whole-run budget. Small local
     /// models on modest hardware routinely need more than a minute for a
-    /// couple of kilobytes of source, so this is deliberately generous —
+    /// couple of kilobytes of source, so this is deliberately generous -
     /// a timeout should mean "something is wrong", not "the model was busy".
     pub ollama_timeout_secs: Option<u64>,
 
@@ -146,7 +146,7 @@ impl ProjectConfig {
 /// Walk up from `start_dir` (inclusive) looking for `gencontext.yaml`.
 /// Returns the path of the first one found, or `ConfigError::NotFound`.
 ///
-/// This mirrors the way `.gitignore` resolution works — each file is
+/// This mirrors the way `.gitignore` resolution works - each file is
 /// governed by the nearest ancestor config, not a global daemon-session one.
 pub fn find_config(start_dir: &Path) -> Result<PathBuf, ConfigError> {
     let mut dir = start_dir.to_path_buf();
@@ -209,11 +209,11 @@ mod tests {
         let src = dir.path().join("src");
         fs::create_dir_all(&src).unwrap();
 
-        // Only the root has a config — the walk-up finds it.
+        // Only the root has a config - the walk-up finds it.
         let found = find_config(&src).unwrap();
         assert_eq!(found, dir.path().join(CONFIG_FILENAME));
 
-        // Now src/ has its own — the nearer one takes precedence.
+        // Now src/ has its own - the nearer one takes precedence.
         write_config(&src, "project: Sub\n");
         let found2 = find_config(&src).unwrap();
         assert_eq!(found2, src.join(CONFIG_FILENAME));

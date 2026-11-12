@@ -1,6 +1,6 @@
 // <<<GENCTX
 // FILE: vscode-extension/src/graphHtml.ts
-// ROLE: The code graph webview's HTML page — controls, canvas and a nonce-based Content Security Policy
+// ROLE: The code graph webview's HTML page - controls, canvas and a nonce-based Content Security Policy
 // EXPORTS: graphPage(), GraphPageOptions
 // IMPORTS: NONE
 // USED BY: vscode-extension/src/graphView.ts, vscode-extension/tests/graphView.browser.js

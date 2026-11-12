@@ -1,6 +1,6 @@
 // <<<GENCTX
 // FILE: vscode-extension/media/graph.js
-// ROLE: Code graph webview — force-directed layout (Barnes-Hut), canvas drawing, pan/zoom/drag, hover, search, local graph and colour modes
+// ROLE: Code graph webview - force-directed layout (Barnes-Hut), canvas drawing, pan/zoom/drag, hover, search, local graph and colour modes
 // EXPORTS: NONE (runs in the webview)
 // IMPORTS: vscode-extension/media/graph-model.js
 // USED BY: vscode-extension/src/graphHtml.ts

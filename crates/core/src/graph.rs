@@ -1,6 +1,6 @@
 // <<<GENCTX
 // FILE: crates/core/src/graph.rs
-// ROLE: Static dependency graph — scans imports without an LLM, keeps the files/deps tables in the store current, and serves the graph
+// ROLE: Static dependency graph - scans imports without an LLM, keeps the files/deps tables in the store current, and serves the graph
 // EXPORTS: scan_file(), language(), sync(), record(), load(), dependency_map(), Scan, FileSet, Graph, GraphNode, SyncStats, GraphError, MAX_SCAN_BYTES
 // IMPORTS: crates/core/src/store.rs, crates/core/src/config.rs, crates/core/src/filter.rs
 // USED BY: crates/core/src/process.rs, crates/core/src/pack.rs, crates/cli/src/main.rs, crates/cli/src/mcp.rs
@@ -12,7 +12,7 @@
 //! No model is involved: each supported language has a small scanner that
 //! finds import statements and resolves them to files of the project by
 //! probing the paths the language would look at. That makes the whole map
-//! available in seconds — long before Ollama has described a single file —
+//! available in seconds - long before Ollama has described a single file -
 //! and it is what feeds:
 //!
 //! - the graph view in the VS Code extension (`genctx graph --json`);
@@ -70,7 +70,7 @@ pub struct Scan {
     /// Language name, from the extension (`rust`, `python`, …, `other`).
     pub lang: &'static str,
     /// Project files this one imports, root-relative and sorted. `None`
-    /// when there is no scanner for the language — "unknown", not "none".
+    /// when there is no scanner for the language - "unknown", not "none".
     pub imports: Option<Vec<String>>,
     /// Paths that would satisfy an import that could not be resolved yet
     /// (a directory, for Go, ends in `/`). If one of them appears later,
@@ -527,7 +527,7 @@ fn python_bases(ctx: &Ctx) -> Vec<String> {
     bases
 }
 
-/// `import a.b.c`: wait for it only when `a` exists in the project — that
+/// `import a.b.c`: wait for it only when `a` exists in the project - that
 /// filters out the standard library and installed packages.
 fn python_absolute(ctx: &Ctx, bases: &[String], parts: &[&str], out: &mut Out) {
     let local = bases.iter().any(|b| {
@@ -883,7 +883,7 @@ fn split_top_level(s: &str) -> Vec<&str> {
 }
 
 /// The `use` and `mod` items of a Rust file, comments removed, each with
-/// whether it was indented (inside a block — almost always an inline
+/// whether it was indented (inside a block - almost always an inline
 /// `mod tests { … }`). A `use` runs to its `;`, across lines; a `mod` is one
 /// line.
 fn logical_statements(source: &str) -> Vec<(bool, String)> {
@@ -1015,7 +1015,7 @@ fn scan_go(ctx: &Ctx, source: &str, out: &mut Out) {
         } else {
             continue; // standard library or another module
         };
-        // A Go import names a package — a directory. Link its files.
+        // A Go import names a package - a directory. Link its files.
         let dir = join(&mod_dir, rest);
         let files: Vec<String> = ctx
             .files_in(&dir)

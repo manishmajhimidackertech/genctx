@@ -1,6 +1,6 @@
 // <<<GENCTX
 // FILE: crates/cpctx/src/main.rs
-// ROLE: Context-preserving file/directory copy — carries stored context from the source project's store to the destination's
+// ROLE: Context-preserving file/directory copy - carries stored context from the source project's store to the destination's
 // EXPORTS: NONE (binary)
 // IMPORTS: crates/core/src/store.rs
 // USED BY: UNKNOWN
@@ -14,7 +14,7 @@ use std::{
 
 // `bail!` is used only inside the `#[cfg(target_os = "windows")]` PATH-setup
 // code below, so a non-Windows build reports it as an unused import. Do not
-// "fix" that warning by removing it — Windows builds need it.
+// "fix" that warning by removing it - Windows builds need it.
 #[cfg_attr(not(target_os = "windows"), allow(unused_imports))]
 use anyhow::{bail, Context, Result};
 use clap::{Parser, Subcommand};
@@ -200,7 +200,7 @@ fn carry_context(copied: &[(PathBuf, PathBuf)], verbose: bool) -> usize {
         let context = match stores.existing_for_file(src) {
             Ok(Some((store, rel))) => match store.get(&rel) {
                 Ok(Some(context)) => context,
-                // No context for this file yet — nothing to carry. Normal.
+                // No context for this file yet - nothing to carry. Normal.
                 Ok(None) => continue,
                 Err(e) => {
                     warn!("could not read context for {}: {e}", src.display());
@@ -311,7 +311,7 @@ fn registry_add_to_path(bin_dir: &str) -> Result<()> {
     // Only add if not already present (case-insensitive).
     let lower_dir = bin_dir.to_lowercase();
     if current.to_lowercase().contains(&lower_dir) {
-        println!("PATH already contains the binary directory — skipping registry update.");
+        println!("PATH already contains the binary directory - skipping registry update.");
         return Ok(());
     }
 
@@ -355,13 +355,13 @@ fn powershell_profile_add(bin_dir: &str) -> Result<()> {
         .context("failed to query PowerShell profile path")?;
 
     if !output.status.success() {
-        warn!("could not determine PowerShell profile path — skipping profile update");
+        warn!("could not determine PowerShell profile path - skipping profile update");
         return Ok(());
     }
 
     let profile_path = String::from_utf8_lossy(&output.stdout).trim().to_string();
     if profile_path.is_empty() {
-        warn!("empty PowerShell profile path — skipping");
+        warn!("empty PowerShell profile path - skipping");
         return Ok(());
     }
 
@@ -376,7 +376,7 @@ fn powershell_profile_add(bin_dir: &str) -> Result<()> {
 
     let sentinel = format!("# cpctx PATH: {bin_dir}");
     if existing.contains(&sentinel) {
-        println!("PowerShell profile already patched — skipping.");
+        println!("PowerShell profile already patched - skipping.");
         return Ok(());
     }
 

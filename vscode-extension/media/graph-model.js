@@ -1,6 +1,6 @@
 // <<<GENCTX
 // FILE: vscode-extension/media/graph-model.js
-// ROLE: Pure graph logic for the code graph view — adjacency index, local neighbourhoods, search, filtering, colour keys
+// ROLE: Pure graph logic for the code graph view - adjacency index, local neighbourhoods, search, filtering, colour keys
 // EXPORTS: buildIndex(), neighbourhood(), visibleNodes(), searchNodes(), colourKey(), folderOf(), palette()
 // IMPORTS: NONE
 // USED BY: vscode-extension/media/graph.js, vscode-extension/tests/graphModel.test.js

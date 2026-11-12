@@ -1,6 +1,6 @@
 // <<<GENCTX
 // FILE: crates/core/src/pack.rs
-// ROLE: Read-only views of stored context — packed text for an LLM, rendered per-file context, project map, search
+// ROLE: Read-only views of stored context - packed text for an LLM, rendered per-file context, project map, search
 // EXPORTS: pack(), file_context(), project_map(), search(), Packed, FileContext
 // IMPORTS: crates/core/src/store.rs, crates/core/src/config.rs, crates/core/src/process.rs, crates/core/src/graph.rs
 // USED BY: crates/cli/src/main.rs (pack, map, mcp)
@@ -95,7 +95,7 @@ pub fn pack(path: &Path, with_imports: bool) -> Result<Packed, ProcessError> {
             }
         }
         None => {
-            out.push_str("[no context yet — daemon may still be generating, try again shortly]\n")
+            out.push_str("[no context yet - daemon may still be generating, try again shortly]\n")
         }
     }
 
@@ -114,7 +114,7 @@ pub fn pack(path: &Path, with_imports: bool) -> Result<Packed, ProcessError> {
     })
 }
 
-/// One line per file with stored context — path and ROLE — under the
+/// One line per file with stored context - path and ROLE - under the
 /// project header. A compact overview to start an LLM session with.
 pub fn project_map(root: &Path) -> Result<String, ProcessError> {
     let config = config::find_config(root)
@@ -125,16 +125,16 @@ pub fn project_map(root: &Path) -> Result<String, ProcessError> {
         config.header_block()
     );
     let Some(store) = ContextStore::open_existing(root)? else {
-        out.push_str("(no stored context yet — run `genctx index`)\n");
+        out.push_str("(no stored context yet - run `genctx index`)\n");
         return Ok(out);
     };
     let all = store.all()?;
     if all.is_empty() {
-        out.push_str("(no stored context yet — run `genctx index`)\n");
+        out.push_str("(no stored context yet - run `genctx index`)\n");
     }
     for c in all {
         let role = store::field_value(&c.fields, "ROLE").unwrap_or("?");
-        out.push_str(&format!("{} — {role}\n", c.rel_path));
+        out.push_str(&format!("{} - {role}\n", c.rel_path));
     }
     Ok(out)
 }
@@ -259,7 +259,7 @@ mod tests {
             .text
             .contains("TASK: first task"));
 
-        // Editing the config changes every pack immediately — nothing stale.
+        // Editing the config changes every pack immediately - nothing stale.
         fs::write(
             dir.path().join(config::CONFIG_FILENAME),
             "project: P\ntask: second task\n",
@@ -366,7 +366,7 @@ mod tests {
             .put("b.py", "2", "llm", "FILE: b.py\nROLE: Renders HTML")
             .unwrap();
         let map = project_map(dir.path()).unwrap();
-        assert!(map.contains("a.py — Parses tokens\nb.py — Renders HTML\n"));
+        assert!(map.contains("a.py - Parses tokens\nb.py - Renders HTML\n"));
         let hits = search(dir.path(), "html").unwrap();
         assert_eq!(hits.len(), 1);
         assert_eq!(hits[0].rel_path, "b.py");

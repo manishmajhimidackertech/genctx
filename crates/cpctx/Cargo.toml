@@ -1,6 +1,6 @@
 [package]
 name        = "cpctx"
-description = "Context-preserving copy — copies files/directories and carries their genctx context into the destination project"
+description = "Context-preserving copy - copies files/directories and carries their genctx context into the destination project"
 version.workspace     = true
 edition.workspace     = true
 authors.workspace     = true
