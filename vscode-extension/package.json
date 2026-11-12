@@ -1,9 +1,9 @@
 {
-  "name": "llmctx",
-  "displayName": "llmctx",
+  "name": "genctx",
+  "displayName": "genctx",
   "description": "Attach LLM context invisibly to your source files. Click to pack any file for pasting into any LLM.",
   "version": "0.1.0",
-  "publisher": "llmctx",
+  "publisher": "genctx",
   "license": "SEE LICENSE IN LICENSE",
   "engines": {
     "vscode": "^1.85.0"
@@ -14,65 +14,78 @@
   "contributes": {
     "configurationDefaults": {
       "files.exclude": {
-        "**/.llmctx": true
+        "**/.genctx": true
       },
       "files.watcherExclude": {
-        "**/.llmctx/**": true
+        "**/.genctx/**": true
       }
     },
     "commands": [
       {
-        "command": "llmctx.pack",
-        "title": "llmctx: Pack current file to clipboard"
+        "command": "genctx.pack",
+        "title": "genctx: Pack current file to clipboard"
       },
       {
-        "command": "llmctx.packWithImports",
-        "title": "llmctx: Pack current file with the context of its imports"
+        "command": "genctx.packWithImports",
+        "title": "genctx: Pack current file with the context of its imports"
       },
       {
-        "command": "llmctx.copyProjectMap",
-        "title": "llmctx: Copy project map to clipboard"
+        "command": "genctx.copyProjectMap",
+        "title": "genctx: Copy project map to clipboard"
       },
       {
-        "command": "llmctx.reindex",
-        "title": "llmctx: Reindex current file (force Ollama regeneration)"
+        "command": "genctx.showGraph",
+        "title": "genctx: Show code graph",
+        "icon": "$(type-hierarchy)"
       },
       {
-        "command": "llmctx.openConfig",
-        "title": "llmctx: Open llmcontext.yaml"
+        "command": "genctx.reindex",
+        "title": "genctx: Reindex current file (force Ollama regeneration)"
+      },
+      {
+        "command": "genctx.openConfig",
+        "title": "genctx: Open gencontext.yaml"
       }
     ],
+    "menus": {
+      "explorer/context": [
+        {
+          "command": "genctx.showGraph",
+          "group": "navigation@90"
+        }
+      ]
+    },
     "configuration": {
-      "title": "llmctx",
+      "title": "genctx",
       "properties": {
-        "llmctx.autoStartDaemon": {
+        "genctx.autoStartDaemon": {
           "type": "boolean",
           "default": true,
-          "description": "Start the llmctxd daemon in the background when it is not already running."
+          "description": "Start the genctxd daemon in the background when it is not already running."
         },
-        "llmctx.daemonPath": {
+        "genctx.daemonPath": {
           "type": "string",
           "default": "",
           "scope": "machine",
-          "description": "Absolute path to the llmctxd binary. Leave empty to use PATH resolution."
+          "description": "Absolute path to the genctxd binary. Leave empty to use PATH resolution."
         },
-        "llmctx.ollamaUrl": {
+        "genctx.ollamaUrl": {
           "type": "string",
           "default": "",
           "scope": "machine",
-          "description": "Ollama base URL to use instead of llmcontext.yaml's. Needed for a remote Ollama: a repository's llmcontext.yaml may only point at this machine. Applies to CLI calls and to a daemon this extension starts (restart an already-running llmctxd to pick it up)."
+          "description": "Ollama base URL to use instead of gencontext.yaml's. Needed for a remote Ollama: a repository's gencontext.yaml may only point at this machine. Applies to CLI calls and to a daemon this extension starts (restart an already-running genctxd to pick it up)."
         },
-        "llmctx.statusBarAlignment": {
+        "genctx.statusBarAlignment": {
           "type": "string",
           "enum": ["left", "right"],
           "default": "right",
-          "description": "Which side of the status bar to show the llmctx indicator."
+          "description": "Which side of the status bar to show the genctx indicator."
         },
-        "llmctx.cliPath": {
+        "genctx.cliPath": {
           "type": "string",
           "default": "",
           "scope": "machine",
-          "description": "Absolute path to the llmctx binary. Leave empty to use PATH resolution (recommended after running `cpctx setup`)."
+          "description": "Absolute path to the genctx binary. Leave empty to use PATH resolution (recommended after running `cpctx setup`)."
         }
       }
     }
@@ -83,6 +96,7 @@
     "watch": "tsc -watch -p ./",
     "lint": "eslint src --ext ts",
     "test": "npm run compile && node --test \"tests/*.test.js\"",
+    "test:browser": "npm run compile && node tests/graphView.browser.js",
     "package": "vsce package"
   },
   "devDependencies": {

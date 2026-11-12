@@ -1,19 +1,21 @@
-// <<<LLMCTX
+// <<<GENCTX
 // FILE: crates/cli/src/mcp.rs
-// ROLE: `llmctx mcp` — Model Context Protocol server over stdio exposing the project's stored context as tools
+// ROLE: `genctx mcp` - Model Context Protocol server over stdio exposing the project's stored context as tools
 // EXPORTS: serve(), Server
 // IMPORTS: crates/core/src/pack.rs, crates/core/src/store.rs, crates/core/src/config.rs
 // USED BY: crates/cli/src/main.rs
 // NOTES: Newline-delimited JSON-RPC 2.0; read-only; paths are confined to the project root
-// LLMCTX>>>
+// GENCTX>>>
 
-//! Lets MCP clients (Claude Code, Claude Desktop, …) read llmctx context
+//! Lets MCP clients (Claude Code, Claude Desktop, …) read genctx context
 //! directly instead of going through the clipboard.
 //!
 //! Tools:
-//! - `get_file_context` — context for one file (project header + six fields);
-//! - `project_map` — one line per file: path and ROLE;
-//! - `search_context` — files whose path or context mentions a query.
+//! - `get_file_context` - context for one file (project header + six fields);
+//! - `project_map` - one line per file: path and ROLE;
+//! - `search_context` - files whose path or context mentions a query;
+//! - `get_dependencies` - what a file imports and what imports it, with
+//!   each one's role, from the dependency graph.
 
 use std::{
     io::{self, BufRead, Write},
@@ -22,7 +24,10 @@ use std::{
 
 use serde_json::{json, Value};
 
-use llmctx_core::{config, fsutil, pack};
+use genctx_core::{
+    config, fsutil, graph, pack,
+    store::{field_value, ContextStore},
+};
 
 /// Protocol versions this server can speak, newest last.
 const SUPPORTED_VERSIONS: &[&str] = &["2024-11-05", "2025-03-26", "2025-06-18"];
@@ -86,9 +91,9 @@ impl Server {
         json!({
             "protocolVersion": version,
             "capabilities": { "tools": {} },
-            "serverInfo": { "name": "llmctx", "version": env!("CARGO_PKG_VERSION") },
+            "serverInfo": { "name": "genctx", "version": env!("CARGO_PKG_VERSION") },
             "instructions": format!(
-                "llmctx keeps a short context summary (role, exports, imports, importers, notes) \
+                "genctx keeps a short context summary (role, exports, imports, importers, notes) \
                  for each file of the project at {}. Call project_map for an overview, \
                  get_file_context before reading or editing an unfamiliar file, and \
                  search_context to find where something lives.",
@@ -109,6 +114,10 @@ impl Server {
             "search_context" => match args["query"].as_str() {
                 Some(query) => self.search(query),
                 None => Err("`query` is required".to_string()),
+            },
+            "get_dependencies" => match args["path"].as_str() {
+                Some(path) => self.dependencies(path),
+                None => Err("`path` is required".to_string()),
             },
             _ => Err(format!("unknown tool: {name}")),
         };
@@ -134,7 +143,7 @@ impl Server {
                 Ok(text)
             }
             None => Ok(format!(
-                "No stored context for {path} yet. Read the file directly, or run `llmctx index`."
+                "No stored context for {path} yet. Read the file directly, or run `genctx index`."
             )),
         }
     }
@@ -149,6 +158,44 @@ impl Server {
             .map(|h| h.fields.clone())
             .collect::<Vec<_>>()
             .join("\n\n"))
+    }
+
+    /// Imports and importers of one file, each with its ROLE. Read-only: a
+    /// file the graph has not recorded yet is scanned on the spot.
+    fn dependencies(&self, path: &str) -> Result<String, String> {
+        let file = self.resolve(path)?;
+        let Some((store, rel)) =
+            ContextStore::open_existing_for_file(&file).map_err(|e| e.to_string())?
+        else {
+            return Ok(format!(
+                "No genctx store for {path} yet - run `genctx graph` or `genctx index`."
+            ));
+        };
+        let mut imports = store.imports_of(&rel).map_err(|e| e.to_string())?;
+        if imports.is_empty() {
+            if let Ok(source) = std::fs::read_to_string(&file) {
+                imports = graph::scan_file(store.key_root(), &rel, &source, None)
+                    .imports
+                    .unwrap_or_default();
+            }
+        }
+        let importers = store.importers_of(&rel).map_err(|e| e.to_string())?;
+        let line = |dep: &String| -> String {
+            let role = store
+                .get(dep)
+                .ok()
+                .flatten()
+                .and_then(|c| field_value(&c.fields, "ROLE").map(str::to_string));
+            match role {
+                Some(r) => format!("  {dep} - {r}\n"),
+                None => format!("  {dep}\n"),
+            }
+        };
+        let mut text = format!("FILE: {rel}\nIMPORTS ({}):\n", imports.len());
+        imports.iter().for_each(|d| text.push_str(&line(d)));
+        text.push_str(&format!("IMPORTED BY ({}):\n", importers.len()));
+        importers.iter().for_each(|d| text.push_str(&line(d)));
+        Ok(text)
     }
 
     /// A tool's `path` argument as a file inside the project root.
@@ -191,6 +238,22 @@ fn tools() -> Value {
             "inputSchema": { "type": "object", "properties": {} }
         },
         {
+            "name": "get_dependencies",
+            "description": "What one project file imports and which files import it, each with \
+                            its role. Use it to find the files a change will touch without \
+                            reading them.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "path": {
+                        "type": "string",
+                        "description": "File path relative to the project root"
+                    }
+                },
+                "required": ["path"]
+            }
+        },
+        {
             "name": "search_context",
             "description": "Find files whose path or context summary mentions a word or phrase \
                             (case-insensitive).",
@@ -212,7 +275,7 @@ fn error(id: Value, code: i64, message: &str) -> Value {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use llmctx_core::{process::content_hash, store::ContextStore};
+    use genctx_core::{process::content_hash, store::ContextStore};
     use std::fs;
     use tempfile::TempDir;
 
@@ -253,7 +316,7 @@ mod tests {
             .handle(&json!({"jsonrpc":"2.0","id":0,"method":"initialize","params":{"protocolVersion":"2025-03-26"}}))
             .unwrap();
         assert_eq!(reply["result"]["protocolVersion"], "2025-03-26");
-        assert_eq!(reply["result"]["serverInfo"]["name"], "llmctx");
+        assert_eq!(reply["result"]["serverInfo"]["name"], "genctx");
         assert!(server
             .handle(&json!({"jsonrpc":"2.0","method":"notifications/initialized"}))
             .is_none());
@@ -269,7 +332,7 @@ mod tests {
         let listed = server
             .handle(&json!({"jsonrpc":"2.0","id":1,"method":"tools/list"}))
             .unwrap();
-        assert_eq!(listed["result"]["tools"].as_array().unwrap().len(), 3);
+        assert_eq!(listed["result"]["tools"].as_array().unwrap().len(), 4);
 
         let ctx = call(&server, "get_file_context", json!({"path":"a.py"}));
         assert_eq!(ctx["isError"], false);
@@ -281,13 +344,36 @@ mod tests {
         assert!(map["content"][0]["text"]
             .as_str()
             .unwrap()
-            .contains("a.py — Parses tokens"));
+            .contains("a.py - Parses tokens"));
 
         let hits = call(&server, "search_context", json!({"query":"TOKENS"}));
         assert!(hits["content"][0]["text"]
             .as_str()
             .unwrap()
             .contains("FILE: a.py"));
+    }
+
+    #[test]
+    fn dependencies_come_from_the_graph_with_roles() {
+        let (dir, server) = server();
+        fs::write(dir.path().join("b.py"), "import a\n").unwrap();
+        let text = call(&server, "get_dependencies", json!({"path": "b.py"}))["content"][0]["text"]
+            .as_str()
+            .unwrap()
+            .to_string();
+        // Not in the graph yet: scanned on the spot.
+        assert!(
+            text.contains("IMPORTS (1):\n  a.py - Parses tokens\n"),
+            "{text}"
+        );
+
+        let store = ContextStore::open(dir.path()).unwrap();
+        graph::sync(&store).unwrap();
+        let text = call(&server, "get_dependencies", json!({"path": "a.py"}))["content"][0]["text"]
+            .as_str()
+            .unwrap()
+            .to_string();
+        assert!(text.contains("IMPORTED BY (1):\n  b.py\n"), "{text}");
     }
 
     #[test]

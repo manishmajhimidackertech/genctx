@@ -1,11 +1,11 @@
-// <<<LLMCTX
+// <<<GENCTX
 // FILE: crates/core/src/fsutil.rs
-// ROLE: Filesystem helpers — safe in-place rewrite of a user's file, lexical absolute paths
+// ROLE: Filesystem helpers - safe in-place rewrite of a user's file, lexical absolute paths
 // EXPORTS: replace_file(), absolute()
 // IMPORTS: NONE
 // USED BY: crates/core/src/process.rs
 // NOTES: Follows symlinks so the link itself is never replaced; keeps the original permissions
-// LLMCTX>>>
+// GENCTX>>>
 
 use std::{
     fs::{self, OpenOptions},
@@ -43,7 +43,7 @@ pub fn absolute(path: &Path) -> PathBuf {
 /// The new contents are written to a temporary file next to the target,
 /// flushed to disk, given the target's permissions, and renamed over it. A
 /// crash or full disk at any point leaves either the old file or the new one,
-/// never a truncated mix — unlike `fs::write`, which truncates first.
+/// never a truncated mix - unlike `fs::write`, which truncates first.
 ///
 /// Symlinks are resolved first, so the file they point at is rewritten and
 /// the link stays a link.
@@ -58,7 +58,7 @@ pub fn replace_file(path: &Path, contents: &[u8]) -> io::Result<()> {
     let permissions = fs::metadata(&target)?.permissions();
 
     let tmp = dir.join(format!(
-        ".{}.llmctx-tmp-{}",
+        ".{}.genctx-tmp-{}",
         name.to_string_lossy(),
         std::process::id()
     ));

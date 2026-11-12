@@ -1,28 +1,28 @@
-// <<<LLMCTX
+// <<<GENCTX
 // FILE: crates/core/src/store.rs
-// ROLE: Filesystem-independent context store — one SQLite database per project at <root>/.llmctx/context.db
+// ROLE: Filesystem-independent context store - one SQLite database per project at <root>/.genctx/context.db
 // EXPORTS: ContextStore, StoreSet, StoredContext, Lookup, Donor, StoreError, LegacyBody, project_root(), project_root_for_file(), move_context(), forget_context(), field_value(), set_field(), parse_legacy_body(), STORE_DIR, CONTEXT_VERSION
 // IMPORTS: crates/core/src/config.rs, crates/core/src/fsutil.rs
 // USED BY: crates/core/src/process.rs, crates/core/src/pack.rs, crates/core/src/migrate.rs, crates/cli/src/main.rs, crates/cpctx/src/main.rs, crates/daemon/src/main.rs
 // NOTES: Stores only the six per-file fields; the project header is rendered at pack time. Keys are root-relative, `/`-separated, in on-disk case
-// LLMCTX>>>
+// GENCTX>>>
 
-//! llmctx's own storage layer.
+//! genctx's own storage layer.
 //!
 //! Context used to live in an NTFS Alternate Data Stream on each file, which
 //! only exists on Windows/NTFS and is silently dropped by most copy, sync and
 //! archive tools. Instead, every project now owns a single SQLite database in
-//! a hidden `.llmctx/` directory at its root — the same idea as `.git/`. It
+//! a hidden `.genctx/` directory at its root - the same idea as `.git/`. It
 //! behaves identically on NTFS, ext4, APFS, FAT32, exFAT and network shares,
 //! and travels with the project whenever the project folder is copied.
 //!
-//! The directory ignores itself (`.llmctx/.gitignore` contains `*`), so it
+//! The directory ignores itself (`.genctx/.gitignore` contains `*`), so it
 //! never shows up in version control and the user's own `.gitignore` is never
 //! touched.
 //!
 //! Each row holds only the six per-file fields (`FILE:` … `NOTES:`). The
 //! project-level header (PROJECT/TASK/CONVENTIONS) is deliberately *not*
-//! stored: it is rendered from the current `llmcontext.yaml` whenever context
+//! stored: it is rendered from the current `gencontext.yaml` whenever context
 //! is packed, so editing the config takes effect everywhere immediately.
 
 use std::{
@@ -36,14 +36,20 @@ use thiserror::Error;
 
 use crate::{config, fsutil::absolute};
 
-/// Directory at the project root that holds everything llmctx stores.
-pub const STORE_DIR: &str = ".llmctx";
+/// Directory at the project root that holds everything genctx stores.
+pub const STORE_DIR: &str = ".genctx";
+
+/// Where the store lived before the project was renamed from llmctx. A store
+/// found there is moved to [`STORE_DIR`] the first time it is opened; it is
+/// genctx's own, git-ignored directory, so moving it touches nothing of the
+/// user's.
+pub const LEGACY_STORE_DIR: &str = ".llmctx";
 
 const DB_FILENAME: &str = "context.db";
 
-/// Written into `.llmctx/.gitignore` so the store ignores itself.
+/// Written into `.genctx/.gitignore` so the store ignores itself.
 const GITIGNORE_BODY: &str =
-    "# Created by llmctx. Keeps this directory out of version control.\n*\n";
+    "# Created by genctx. Keeps this directory out of version control.\n*\n";
 
 /// Format version of stored field text. Rows stamped with any other version
 /// read as missing, so a format change regenerates silently.
@@ -54,7 +60,14 @@ pub const CONTEXT_VERSION: u32 = 1;
 /// 1: `body` held the whole rendered block (header, SOURCE, HASH, fields).
 /// 2: `fields` holds only the six fields; `source` has its own column; nested
 ///    project stores are linked for cross-project renames.
-const SCHEMA_VERSION: i64 = 2;
+/// 3: the dependency graph - `files` (one row per scanned project file) and
+///    `deps` (indexed import edges, from the static scan and from `IMPORTS:`).
+const SCHEMA_VERSION: i64 = 3;
+
+/// `deps.kind` for edges found by scanning the source (`graph.rs`).
+pub const DEP_SCANNED: &str = "scan";
+/// `deps.kind` for edges listed in a stored `IMPORTS:` field.
+pub const DEP_DECLARED: &str = "declared";
 
 /// How long a connection waits for another process (daemon vs. CLI) to
 /// finish a write before giving up.
@@ -63,8 +76,8 @@ const BUSY_TIMEOUT: Duration = Duration::from_secs(5);
 #[derive(Debug, Error)]
 pub enum StoreError {
     #[error(
-        "{path} is not inside an llmctx project (no llmcontext.yaml, {STORE_DIR}/ or .git above it) \
-         — run `llmctx init` in the project root"
+        "{path} is not inside a genctx project (no gencontext.yaml, {STORE_DIR}/ or .git above it) \
+         - run `genctx init` in the project root"
     )]
     NoProject { path: String },
 
@@ -86,8 +99,8 @@ pub enum StoreError {
     },
 
     #[error(
-        "context store {path} uses schema {found}, but this llmctx only knows {expected} \
-         — upgrade llmctx"
+        "context store {path} uses schema {found}, but this genctx only knows {expected} \
+         - upgrade genctx"
     )]
     NewerSchema {
         path: String,
@@ -102,9 +115,9 @@ pub struct StoredContext {
     /// Path relative to the project root, `/`-separated on every platform.
     pub rel_path: String,
     /// SHA-256 of the source the context was generated from. Empty when
-    /// unknown (imported from a pre-hash llmctx), which never matches.
+    /// unknown (imported from a pre-hash genctx), which never matches.
     pub content_hash: String,
-    /// Who wrote it: `llm` (an `<<<LLMCTX` block) or `ollama`.
+    /// Who wrote it: `llm` (an `<<<GENCTX` block) or `ollama`.
     pub source: String,
     /// The six field lines, `FILE:` through `NOTES:`.
     pub fields: String,
@@ -137,11 +150,11 @@ pub enum Lookup {
 
 /// Find the project root governing `start_dir`.
 ///
-/// The nearest `llmcontext.yaml` wins, since that file is llmctx's own
+/// The nearest `gencontext.yaml` wins, since that file is genctx's own
 /// project marker. Without one, the nearest directory that already has a
 /// store or is a git checkout is used. `None` means the path is not inside
-/// any project, and nothing should be written for it — the store must never
-/// scatter `.llmctx/` directories next to arbitrary files.
+/// any project, and nothing should be written for it - the store must never
+/// scatter `.genctx/` directories next to arbitrary files.
 pub fn project_root(start_dir: &Path) -> Option<PathBuf> {
     let start = absolute(start_dir);
     if let Ok(config_path) = config::find_config(&start) {
@@ -149,7 +162,11 @@ pub fn project_root(start_dir: &Path) -> Option<PathBuf> {
     }
     start
         .ancestors()
-        .find(|dir| dir.join(STORE_DIR).is_dir() || dir.join(".git").exists())
+        .find(|dir| {
+            dir.join(STORE_DIR).is_dir()
+                || dir.join(LEGACY_STORE_DIR).is_dir()
+                || dir.join(".git").exists()
+        })
         .map(Path::to_path_buf)
 }
 
@@ -173,10 +190,11 @@ pub struct ContextStore {
 }
 
 impl ContextStore {
-    /// Open the store at `root`, creating `.llmctx/` and the database if
+    /// Open the store at `root`, creating `.genctx/` and the database if
     /// they do not exist yet.
     pub fn open(root: &Path) -> Result<Self, StoreError> {
         let root = absolute(root);
+        adopt_legacy_store_dir(&root);
         let dir = root.join(STORE_DIR);
         let created = prepare_store_dir(&dir)?;
         let store = Self::connect(root, dir.join(DB_FILENAME))?;
@@ -192,6 +210,7 @@ impl ContextStore {
     /// commands so that looking for context never creates a store.
     pub fn open_existing(root: &Path) -> Result<Option<Self>, StoreError> {
         let root = absolute(root);
+        adopt_legacy_store_dir(&root);
         let db_path = root.join(STORE_DIR).join(DB_FILENAME);
         if !db_path.is_file() {
             return Ok(None);
@@ -267,7 +286,11 @@ impl ContextStore {
         // Re-read under the lock: another process may have done the work.
         match self.user_version()? {
             0 => self.create_tables()?,
-            1 => self.upgrade_from_v1()?,
+            1 => {
+                self.upgrade_from_v1()?;
+                self.upgrade_from_v2()?;
+            }
+            2 => self.upgrade_from_v2()?,
             _ => {}
         }
         self.conn
@@ -290,7 +313,58 @@ impl ContextStore {
                  CREATE INDEX IF NOT EXISTS context_by_hash ON context(content_hash);
                  CREATE TABLE IF NOT EXISTS linked_stores (rel_root TEXT PRIMARY KEY);",
             )
+            .map_err(self.err())?;
+        self.create_graph_tables()
+    }
+
+    /// The dependency graph. `files` remembers what each scanned file looked
+    /// like (so an unchanged file is never read twice); `deps` holds edges
+    /// in both directions' indexes, so "what does X import" and "who
+    /// imports X" are both index lookups however large the project is.
+    /// `waits` records, for each import that could not be resolved, the
+    /// paths that would have satisfied it - a file created later at one of
+    /// those paths re-scans exactly the files waiting for it.
+    fn create_graph_tables(&self) -> Result<(), StoreError> {
+        self.conn
+            .execute_batch(
+                "CREATE TABLE IF NOT EXISTS files (
+                     rel_path     TEXT PRIMARY KEY,
+                     content_hash TEXT NOT NULL,
+                     mtime        INTEGER NOT NULL,
+                     size         INTEGER NOT NULL,
+                     lang         TEXT NOT NULL,
+                     lines        INTEGER NOT NULL
+                 );
+                 CREATE TABLE IF NOT EXISTS deps (
+                     src  TEXT NOT NULL,
+                     dst  TEXT NOT NULL,
+                     kind TEXT NOT NULL,
+                     PRIMARY KEY (src, dst, kind)
+                 ) WITHOUT ROWID;
+                 CREATE INDEX IF NOT EXISTS deps_by_dst ON deps(dst);
+                 CREATE TABLE IF NOT EXISTS waits (
+                     src       TEXT NOT NULL,
+                     candidate TEXT NOT NULL,
+                     PRIMARY KEY (candidate, src)
+                 ) WITHOUT ROWID;
+                 CREATE INDEX IF NOT EXISTS waits_by_src ON waits(src);
+                 CREATE TABLE IF NOT EXISTS graph_meta (
+                     key   TEXT PRIMARY KEY,
+                     value TEXT NOT NULL
+                 );",
+            )
             .map_err(self.err())
+    }
+
+    /// v2 had no graph: add the tables and seed `deps` from the `IMPORTS:`
+    /// fields already stored. The static scan fills the rest on the next
+    /// `genctx graph`, `genctx index` or save.
+    fn upgrade_from_v2(&self) -> Result<(), StoreError> {
+        self.create_graph_tables()?;
+        for ctx in self.all()? {
+            self.replace_declared_deps(&ctx.rel_path, &ctx.fields)?;
+        }
+        Ok(())
     }
 
     /// v1 rows kept the whole rendered block in `body`; split it.
@@ -338,6 +412,13 @@ impl ContextStore {
     /// The project root this store belongs to.
     pub fn root(&self) -> &Path {
         &self.root
+    }
+
+    /// The root keys are relative to: symlinks resolved and, on Windows and
+    /// macOS, in on-disk case. Walk from here to get keys in the same
+    /// spelling as [`rel_key`](Self::rel_key).
+    pub fn key_root(&self) -> &Path {
+        self.canonical_root.as_deref().unwrap_or(&self.root)
     }
 
     /// Location of the database file.
@@ -410,6 +491,19 @@ impl ContextStore {
         source: &str,
         fields: &str,
     ) -> Result<(), StoreError> {
+        self.savepoint(|| {
+            self.put_row(rel_path, content_hash, source, fields)?;
+            self.replace_declared_deps(rel_path, fields)
+        })
+    }
+
+    fn put_row(
+        &self,
+        rel_path: &str,
+        content_hash: &str,
+        source: &str,
+        fields: &str,
+    ) -> Result<(), StoreError> {
         self.conn
             .execute(
                 "INSERT INTO context (rel_path, content_hash, source, fields, version, updated_at)
@@ -433,25 +527,107 @@ impl ContextStore {
             .map_err(self.err())
     }
 
+    /// Point the `declared` edges of `rel_path` at whatever its `IMPORTS:`
+    /// field lists now.
+    fn replace_declared_deps(&self, rel_path: &str, fields: &str) -> Result<(), StoreError> {
+        self.conn
+            .execute(
+                "DELETE FROM deps WHERE src = ?1 AND kind = ?2",
+                params![rel_path, DEP_DECLARED],
+            )
+            .map_err(self.err())?;
+        let imports = field_value(fields, "IMPORTS")
+            .map(split_paths)
+            .unwrap_or_default();
+        for dst in imports.iter().filter(|d| *d != rel_path) {
+            self.conn
+                .execute(
+                    "INSERT OR IGNORE INTO deps (src, dst, kind) VALUES (?1, ?2, ?3)",
+                    params![rel_path, dst, DEP_DECLARED],
+                )
+                .map_err(self.err())?;
+        }
+        Ok(())
+    }
+
+    /// Run `f` atomically. A savepoint, unlike a transaction, nests: it works
+    /// both on its own and inside a caller's transaction.
+    pub(crate) fn savepoint<T>(
+        &self,
+        f: impl FnOnce() -> Result<T, StoreError>,
+    ) -> Result<T, StoreError> {
+        self.conn
+            .execute_batch("SAVEPOINT genctx_sp")
+            .map_err(self.err())?;
+        match f() {
+            Ok(v) => {
+                self.conn
+                    .execute_batch("RELEASE genctx_sp")
+                    .map_err(self.err())?;
+                Ok(v)
+            }
+            Err(e) => {
+                let _ = self
+                    .conn
+                    .execute_batch("ROLLBACK TO genctx_sp; RELEASE genctx_sp");
+                Err(e)
+            }
+        }
+    }
+
+    /// The raw connection, for the graph module's queries.
+    pub(crate) fn conn(&self) -> &Connection {
+        &self.conn
+    }
+
+    /// Map a rusqlite error on this store to a [`StoreError`].
+    pub(crate) fn sql_err(&self) -> impl Fn(rusqlite::Error) -> StoreError + '_ {
+        self.err()
+    }
+
     /// Delete the entry for exactly `rel_path`. Returns whether one existed.
     pub fn remove(&self, rel_path: &str) -> Result<bool, StoreError> {
-        self.conn
-            .execute("DELETE FROM context WHERE rel_path = ?1", params![rel_path])
-            .map(|n| n > 0)
-            .map_err(self.err())
+        self.savepoint(|| {
+            self.conn
+                .execute(
+                    "DELETE FROM deps WHERE src = ?1 AND kind = ?2",
+                    params![rel_path, DEP_DECLARED],
+                )
+                .map_err(self.err())?;
+            self.conn
+                .execute("DELETE FROM context WHERE rel_path = ?1", params![rel_path])
+                .map(|n| n > 0)
+                .map_err(self.err())
+        })
     }
 
     /// Delete the entry for `rel_path`, or every entry under it if it names
     /// a directory. Returns how many were removed.
+    ///
+    /// The file (or directory) is gone, so its graph node, its outgoing
+    /// edges and its pending waits go too. Edges *to* it stay: the files
+    /// importing it still do, and they reconnect if it comes back.
     pub fn remove_path(&self, rel_path: &str) -> Result<usize, StoreError> {
         // substr() rather than LIKE: `_` and `%` are legal in file names.
-        self.conn
-            .execute(
-                "DELETE FROM context WHERE rel_path = ?1
-                 OR substr(rel_path, 1, length(?1) + 1) = ?1 || '/'",
-                params![rel_path],
-            )
-            .map_err(self.err())
+        const UNDER: &str = "= ?1 OR substr({c}, 1, length(?1) + 1) = ?1 || '/'";
+        let under = |col: &str| format!("{col} {}", UNDER.replace("{c}", col));
+        self.savepoint(|| {
+            for sql in [
+                format!("DELETE FROM deps WHERE {}", under("src")),
+                format!("DELETE FROM waits WHERE {}", under("src")),
+                format!("DELETE FROM files WHERE {}", under("rel_path")),
+            ] {
+                self.conn
+                    .execute(&sql, params![rel_path])
+                    .map_err(self.err())?;
+            }
+            self.conn
+                .execute(
+                    &format!("DELETE FROM context WHERE {}", under("rel_path")),
+                    params![rel_path],
+                )
+                .map_err(self.err())
+        })
     }
 
     /// Re-key the entry for `from` (a file) or every entry under it (a
@@ -461,21 +637,47 @@ impl ContextStore {
     pub fn rename_path(&self, from: &str, to: &str) -> Result<usize, StoreError> {
         let moved = self.entries_under(from)?;
         if moved.is_empty() {
+            // Nothing stored yet (say, a file too small for context), but
+            // the graph may still know it.
+            self.savepoint(|| self.rename_graph_paths(from, to))?;
             return Ok(0);
         }
-        let tx = self.conn.unchecked_transaction().map_err(self.err())?;
-        for ctx in &moved {
-            let new_rel = format!("{to}{}", &ctx.rel_path[from.len()..]);
-            self.remove(&ctx.rel_path)?;
-            self.put(
-                &new_rel,
-                &ctx.content_hash,
-                &ctx.source,
-                &set_field(&ctx.fields, "FILE", &new_rel),
-            )?;
-        }
-        tx.commit().map_err(self.err())?;
+        self.savepoint(|| {
+            for ctx in &moved {
+                let new_rel = format!("{to}{}", &ctx.rel_path[from.len()..]);
+                self.remove(&ctx.rel_path)?;
+                self.put(
+                    &new_rel,
+                    &ctx.content_hash,
+                    &ctx.source,
+                    &set_field(&ctx.fields, "FILE", &new_rel),
+                )?;
+            }
+            self.rename_graph_paths(from, to)
+        })?;
         Ok(moved.len())
+    }
+
+    /// Re-key graph rows under `from` to `to`: nodes, edges in both
+    /// directions (so files importing the moved one follow it) and waits.
+    fn rename_graph_paths(&self, from: &str, to: &str) -> Result<(), StoreError> {
+        for (table, col) in [
+            ("files", "rel_path"),
+            ("deps", "src"),
+            ("deps", "dst"),
+            ("waits", "src"),
+        ] {
+            self.conn
+                .execute(
+                    &format!(
+                        "UPDATE OR REPLACE {table} SET {col} = ?2 || substr({col}, length(?1) + 1)
+                         WHERE {col} = ?1 OR substr({col}, 1, length(?1) + 1) = ?1 || '/'"
+                    ),
+                    params![from, to],
+                )
+                .map_err(self.err())?;
+        }
+        Ok(())
     }
 
     /// The entry for `rel_path` and every entry below it (if a directory).
@@ -523,18 +725,32 @@ impl ContextStore {
     /// Files whose `IMPORTS:` field names `rel_path`. This is what `USED BY`
     /// really is, computed across the project instead of guessed from one
     /// file.
+    ///
+    /// Answered from the `deps` index - both edges declared in `IMPORTS:`
+    /// and edges the static scan found - so it costs one index lookup, not
+    /// a pass over every stored file.
     pub fn importers_of(&self, rel_path: &str) -> Result<Vec<String>, StoreError> {
-        Ok(self
-            .all()?
-            .into_iter()
-            .filter(|c| c.rel_path != rel_path)
-            .filter(|c| {
-                field_value(&c.fields, "IMPORTS")
-                    .map(|v| split_paths(v).iter().any(|p| p == rel_path))
-                    .unwrap_or(false)
-            })
-            .map(|c| c.rel_path)
-            .collect())
+        self.deps_query(
+            "SELECT DISTINCT src FROM deps WHERE dst = ?1 AND src <> ?1 ORDER BY src",
+            rel_path,
+        )
+    }
+
+    /// Project files `rel_path` depends on: declared in its `IMPORTS:` or
+    /// found by the static scan.
+    pub fn imports_of(&self, rel_path: &str) -> Result<Vec<String>, StoreError> {
+        self.deps_query(
+            "SELECT DISTINCT dst FROM deps WHERE src = ?1 AND dst <> ?1 ORDER BY dst",
+            rel_path,
+        )
+    }
+
+    fn deps_query(&self, sql: &str, rel_path: &str) -> Result<Vec<String>, StoreError> {
+        let mut stmt = self.conn.prepare_cached(sql).map_err(self.err())?;
+        let rows = stmt
+            .query_map(params![rel_path], |r| r.get::<_, String>(0))
+            .map_err(self.err())?;
+        rows.collect::<Result<Vec<_>, _>>().map_err(self.err())
     }
 
     /// Resolve the context for `rel_path` whose current content hashes to
@@ -581,12 +797,13 @@ impl ContextStore {
         let donor_gone = !donor.store_root.join(&donor.context.rel_path).exists();
         let same_store = absolute(&donor.store_root) == self.root;
 
-        let tx = self.conn.unchecked_transaction().map_err(self.err())?;
-        self.put(rel_path, content_hash, &donor.context.source, &fields)?;
-        if donor_gone && same_store {
-            self.remove(&donor.context.rel_path)?;
-        }
-        tx.commit().map_err(self.err())?;
+        self.savepoint(|| {
+            self.put(rel_path, content_hash, &donor.context.source, &fields)?;
+            if donor_gone && same_store {
+                self.remove(&donor.context.rel_path)?;
+            }
+            Ok(())
+        })?;
 
         if donor_gone && !same_store {
             if let Some(other) = ContextStore::open_existing(&donor.store_root)? {
@@ -601,7 +818,7 @@ impl ContextStore {
         })
     }
 
-    /// Delete entries whose file no longer exists under the root — all of
+    /// Delete entries whose file no longer exists under the root - all of
     /// them, or only those under the directory `under` (root-relative).
     /// Also forgets linked stores that have disappeared. Returns the keys
     /// removed.
@@ -619,7 +836,7 @@ impl ContextStore {
             .collect();
         let tx = self.conn.unchecked_transaction().map_err(self.err())?;
         for rel in &gone {
-            self.remove(rel)?;
+            self.remove_path(rel)?;
         }
         for linked in self.linked_roots()? {
             if !linked.join(STORE_DIR).join(DB_FILENAME).is_file() {
@@ -710,7 +927,7 @@ impl ContextStore {
 // ── Path-level operations (VS Code rename/delete events) ─────────────────────
 
 /// Move the context of a renamed or moved file or directory from `from` to
-/// `to` — within one project, or between projects. Context for something
+/// `to` - within one project, or between projects. Context for something
 /// moved out of every project is dropped. Returns how many entries moved.
 pub fn move_context(from: &Path, to: &Path) -> Result<usize, StoreError> {
     let Some(from_root) = project_root_for_file(from) else {
@@ -763,7 +980,7 @@ pub fn forget_context(path: &Path) -> Result<usize, StoreError> {
 // ── StoreSet ─────────────────────────────────────────────────────────────────
 
 /// Open stores keyed by project root, for commands that touch many files
-/// (`cpctx copy`, `llmctx migrate`) and should not reopen a database per file.
+/// (`cpctx copy`, `genctx migrate`) and should not reopen a database per file.
 #[derive(Default)]
 pub struct StoreSet {
     stores: HashMap<PathBuf, ContextStore>,
@@ -859,7 +1076,7 @@ fn split_paths(value: &str) -> Vec<String> {
         .collect()
 }
 
-/// A context body in the llmctx 0.1 format (NTFS streams, and store schema
+/// A context body in the genctx 0.1 format (NTFS streams, and store schema
 /// v1): project header, `SOURCE:`, `HASH:`, a blank line, then the fields.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct LegacyBody {
@@ -885,7 +1102,7 @@ pub fn parse_legacy_body(body: &str) -> LegacyBody {
             .filter(|l| {
                 let t = l.trim_start();
                 ![
-                    "LLMCTX_VERSION:",
+                    "LLMCTX_VERSION:", // written by llmctx 0.1, before the rename
                     "PROJECT:",
                     "TASK:",
                     "CONVENTIONS:",
@@ -910,7 +1127,7 @@ pub fn parse_legacy_body(body: &str) -> LegacyBody {
 
 // ── Private helpers ──────────────────────────────────────────────────────────
 
-/// Create `.llmctx/` if needed and make sure it still ignores itself.
+/// Create `.genctx/` if needed and make sure it still ignores itself.
 /// Returns whether the directory was created.
 fn prepare_store_dir(dir: &Path) -> Result<bool, StoreError> {
     let io_err = |path: &Path| {
@@ -932,8 +1149,23 @@ fn prepare_store_dir(dir: &Path) -> Result<bool, StoreError> {
     Ok(created)
 }
 
+/// Move a pre-rename `.llmctx/` store to `.genctx/`, once. Best effort: if
+/// the move fails (another process got there first, or permissions), the
+/// store is simply rebuilt by the next `genctx index`.
+fn adopt_legacy_store_dir(root: &Path) {
+    let legacy = root.join(LEGACY_STORE_DIR);
+    let current = root.join(STORE_DIR);
+    if !legacy.is_dir() || current.exists() {
+        return;
+    }
+    if std::fs::rename(&legacy, &current).is_ok() {
+        // The old self-ignore file names the old tool; refresh it.
+        let _ = std::fs::write(current.join(".gitignore"), GITIGNORE_BODY);
+    }
+}
+
 /// Windows does not treat dot-directories as hidden, so set the attribute.
-/// Best effort: a visible `.llmctx` is cosmetic, not an error.
+/// Best effort: a visible `.genctx` is cosmetic, not an error.
 #[cfg(target_os = "windows")]
 fn hide_dir(dir: &Path) {
     use windows::{
@@ -1013,6 +1245,25 @@ mod tests {
         assert!(store.db_path().is_file());
         let ignore = fs::read_to_string(dir.path().join(STORE_DIR).join(".gitignore")).unwrap();
         assert!(ignore.lines().any(|l| l == "*"));
+    }
+
+    #[test]
+    fn legacy_store_dir_is_moved_on_open() {
+        let (dir, _) = project();
+        ContextStore::open(dir.path())
+            .unwrap()
+            .put("a.rs", "h", "llm", "b")
+            .unwrap();
+        fs::rename(
+            dir.path().join(STORE_DIR),
+            dir.path().join(LEGACY_STORE_DIR),
+        )
+        .unwrap();
+
+        let store = ContextStore::open_existing(dir.path()).unwrap().unwrap();
+        assert_eq!(store.get("a.rs").unwrap().unwrap().fields, "b");
+        assert!(dir.path().join(STORE_DIR).is_dir());
+        assert!(!dir.path().join(LEGACY_STORE_DIR).exists());
     }
 
     #[test]
@@ -1144,7 +1395,7 @@ mod tests {
             panic!("expected Found");
         };
         store.adopt("src/copy.rs", "h", &donor).unwrap();
-        // The donor file still exists, so this is a copy — both keep context.
+        // The donor file still exists, so this is a copy - both keep context.
         assert!(store.get(&rel).unwrap().is_some());
         assert_eq!(
             field_value(&store.get("src/copy.rs").unwrap().unwrap().fields, "FILE"),

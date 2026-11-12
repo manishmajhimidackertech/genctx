@@ -1,17 +1,17 @@
-project: "llmctx"
+project: "genctx"
 stack: "Rust (tokio, reqwest, clap, serde, sha2, ignore), TypeScript (VS Code extension API)"
-task: "Ship the filesystem-independent store: .llmctx/ SQLite, daemon auth, MCP server, CI"
+task: "Ship the filesystem-independent store: .genctx/ SQLite, daemon auth, MCP server, CI"
 
 conventions:
-  - "No unwrap() in library code — use thiserror + anyhow at boundaries"
+  - "No unwrap() in library code - use thiserror + anyhow at boundaries"
   - "Every public async fn returns a typed Result; never panics"
-  - "process_file() is the single authoritative decision fn — daemon and CLI never reimplement its branch logic"
-  - "Context is only written through store.rs (ContextStore); nothing else touches .llmctx/"
+  - "process_file() is the single authoritative decision fn - daemon and CLI never reimplement its branch logic"
+  - "Context is only written through store.rs (ContextStore); nothing else touches .genctx/"
   - "Only the six per-file fields are stored; the project header and USED BY are computed at read time (pack.rs)"
-  - "Repo config must never widen where code is sent: ollama_url is local-only, remote needs LLMCTX_OLLAMA_URL"
-  - "LLMCTX comment blocks are invisible infrastructure — do not narrate them to users"
+  - "Repo config must never widen where code is sent: ollama_url is local-only, remote needs GENCTX_OLLAMA_URL"
+  - "GENCTX comment blocks are invisible infrastructure - do not narrate them to users"
 
-llmctx_ignore:
+genctx_ignore:
   - "target/**"
   - "vscode-extension/node_modules/**"
   - "vscode-extension/out/**"

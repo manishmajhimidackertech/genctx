@@ -1,11 +1,11 @@
-// <<<LLMCTX
+// <<<GENCTX
 // FILE: vscode-extension/src/extension.ts
-// ROLE: VS Code extension entry point — wires save/rename/delete listeners, daemon client, status bar, and commands
+// ROLE: VS Code extension entry point - wires save/rename/delete listeners, daemon client, status bar, and commands
 // EXPORTS: activate(), deactivate()
-// IMPORTS: vscode-extension/src/daemon.ts, vscode-extension/src/statusBar.ts, vscode-extension/src/pack.ts, vscode-extension/src/hash.ts
+// IMPORTS: vscode-extension/src/daemon.ts, vscode-extension/src/statusBar.ts, vscode-extension/src/pack.ts, vscode-extension/src/hash.ts, vscode-extension/src/graphView.ts
 // USED BY: VS Code extension host
 // NOTES: All disposables are registered on context.subscriptions; deactivate() is a no-op; the daemon is started on demand
-// LLMCTX>>>
+// GENCTX>>>
 
 import * as vscode from "vscode";
 import * as path from "path";
@@ -15,11 +15,12 @@ import { DaemonClient, StatusMessage, UpdateAvailableMessage } from "./daemon";
 import { StatusBarManager } from "./statusBar";
 import { cliEnv, copyProjectMap, packFile, reindexFile, verifyCliOnPath } from "./pack";
 import { contentHash } from "./hash";
+import { GraphPanel } from "./graphView";
 
 // ── Extension lifecycle ───────────────────────────────────────────────────────
 
 export function activate(context: vscode.ExtensionContext): void {
-  const config = vscode.workspace.getConfiguration("llmctx");
+  const config = vscode.workspace.getConfiguration("genctx");
   const barSide = config.get<string>("statusBarAlignment", "right");
 
   const alignment =
@@ -33,12 +34,12 @@ export function activate(context: vscode.ExtensionContext): void {
 
   // ── Daemon client ─────────────────────────────────────────────────────────
   // The daemon publishes its port and a token in a per-user file; the client
-  // finds it there, and starts llmctxd itself when none is running.
-  const ollamaUrl = cliEnv().LLMCTX_OLLAMA_URL;
+  // finds it there, and starts genctxd itself when none is running.
+  const ollamaUrl = cliEnv().GENCTX_OLLAMA_URL;
   const daemon = new DaemonClient({
     autoStart: config.get<boolean>("autoStartDaemon", true),
     daemonPath: config.get<string>("daemonPath", "").trim(),
-    env: ollamaUrl ? { LLMCTX_OLLAMA_URL: ollamaUrl } : {},
+    env: ollamaUrl ? { GENCTX_OLLAMA_URL: ollamaUrl } : {},
   });
 
   daemon.on("connect", () => {
@@ -57,21 +58,21 @@ export function activate(context: vscode.ExtensionContext): void {
     const notFound = err.message.includes("ENOENT");
     void vscode.window.showWarningMessage(
       notFound
-        ? "llmctx: could not start the daemon — `llmctxd` is not on your PATH. Install it, or set `llmctx.daemonPath`."
-        : `llmctx: could not start the daemon: ${err.message}`
+        ? "genctx: could not start the daemon - `genctxd` is not on your PATH. Install it, or set `genctx.daemonPath`."
+        : `genctx: could not start the daemon: ${err.message}`
     );
   });
 
   daemon.on("updateAvailable", (msg: UpdateAvailableMessage) => {
     void vscode.window
       .showInformationMessage(
-        `llmctx update available: ${msg.currentVersion} -> ${msg.latestVersion}`,
+        `genctx update available: ${msg.currentVersion} -> ${msg.latestVersion}`,
         "Download"
       )
       .then((choice) => {
         if (choice === "Download") {
           void vscode.env.openExternal(
-            vscode.Uri.parse("https://github.com/manishmajhimidackertech/llmctx/releases/latest")
+            vscode.Uri.parse("https://github.com/manishmajhimidackertech/genctx/releases/latest")
           );
         }
       });
@@ -109,7 +110,7 @@ export function activate(context: vscode.ExtensionContext): void {
   // Only operations made through VS Code (Explorer, refactorings) are seen
   // here. They keep stored context attached to the right paths, even when a
   // renamed file is also edited; anything done outside VS Code is caught by
-  // content-hash matching and `llmctx index`/`gc` instead.
+  // content-hash matching and `genctx index`/`gc` instead.
   context.subscriptions.push(
     vscode.workspace.onDidRenameFiles((e) => {
       for (const { oldUri, newUri } of e.files) {
@@ -142,11 +143,11 @@ export function activate(context: vscode.ExtensionContext): void {
   // ── Commands ──────────────────────────────────────────────────────────────
 
   context.subscriptions.push(
-    vscode.commands.registerCommand("llmctx.pack", async () => {
+    vscode.commands.registerCommand("genctx.pack", async () => {
       const filePath = activeFilePath();
       if (!filePath) {
         void vscode.window.showWarningMessage(
-          "llmctx: no active file to pack"
+          "genctx: no active file to pack"
         );
         return;
       }
@@ -155,11 +156,11 @@ export function activate(context: vscode.ExtensionContext): void {
   );
 
   context.subscriptions.push(
-    vscode.commands.registerCommand("llmctx.packWithImports", async () => {
+    vscode.commands.registerCommand("genctx.packWithImports", async () => {
       const filePath = activeFilePath();
       if (!filePath) {
         void vscode.window.showWarningMessage(
-          "llmctx: no active file to pack"
+          "genctx: no active file to pack"
         );
         return;
       }
@@ -168,14 +169,14 @@ export function activate(context: vscode.ExtensionContext): void {
   );
 
   context.subscriptions.push(
-    vscode.commands.registerCommand("llmctx.copyProjectMap", async () => {
+    vscode.commands.registerCommand("genctx.copyProjectMap", async () => {
       const folder =
         (vscode.window.activeTextEditor &&
           vscode.workspace.getWorkspaceFolder(vscode.window.activeTextEditor.document.uri)
             ?.uri.fsPath) ??
         vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
       if (!folder) {
-        void vscode.window.showWarningMessage("llmctx: open a folder first");
+        void vscode.window.showWarningMessage("genctx: open a folder first");
         return;
       }
       await copyProjectMap(folder);
@@ -183,11 +184,34 @@ export function activate(context: vscode.ExtensionContext): void {
   );
 
   context.subscriptions.push(
-    vscode.commands.registerCommand("llmctx.reindex", async () => {
+    vscode.commands.registerCommand("genctx.showGraph", (target?: vscode.Uri) => {
+      // From the Explorer: the clicked folder (or a file's folder). From the
+      // palette: the active file's workspace folder, else the first one.
+      let folder: string | undefined;
+      if (target?.scheme === "file") {
+        folder = fs.statSync(target.fsPath, { throwIfNoEntry: false })?.isDirectory()
+          ? target.fsPath
+          : path.dirname(target.fsPath);
+      }
+      folder ??=
+        (vscode.window.activeTextEditor &&
+          vscode.workspace.getWorkspaceFolder(vscode.window.activeTextEditor.document.uri)
+            ?.uri.fsPath) ??
+        vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+      if (!folder) {
+        void vscode.window.showWarningMessage("genctx: open a folder first");
+        return;
+      }
+      GraphPanel.show(context.extensionUri, folder);
+    })
+  );
+
+  context.subscriptions.push(
+    vscode.commands.registerCommand("genctx.reindex", async () => {
       const filePath = activeFilePath();
       if (!filePath) {
         void vscode.window.showWarningMessage(
-          "llmctx: no active file to reindex"
+          "genctx: no active file to reindex"
         );
         return;
       }
@@ -196,14 +220,14 @@ export function activate(context: vscode.ExtensionContext): void {
   );
 
   context.subscriptions.push(
-    vscode.commands.registerCommand("llmctx.openConfig", async () => {
+    vscode.commands.registerCommand("genctx.openConfig", async () => {
       const configPath = findConfigInWorkspace();
       if (configPath) {
         const uri = vscode.Uri.file(configPath);
         await vscode.window.showTextDocument(uri);
       } else {
         const choice = await vscode.window.showInformationMessage(
-          "No llmcontext.yaml found in the workspace. Create one?",
+          "No gencontext.yaml found in the workspace. Create one?",
           "Create",
           "Cancel"
         );
@@ -215,7 +239,7 @@ export function activate(context: vscode.ExtensionContext): void {
   );
 }
 
-// deactivate() is intentionally empty — DaemonClient.dispose() is called via
+// deactivate() is intentionally empty - DaemonClient.dispose() is called via
 // context.subscriptions, which VS Code drains on deactivation.
 export function deactivate(): void {}
 
@@ -229,10 +253,10 @@ function activeFilePath(): string | undefined {
   return editor.document.uri.fsPath;
 }
 
-/** Walk workspace folders looking for the nearest llmcontext.yaml. */
+/** Walk workspace folders looking for the nearest gencontext.yaml. */
 function findConfigInWorkspace(): string | undefined {
   for (const folder of vscode.workspace.workspaceFolders ?? []) {
-    const candidate = path.join(folder.uri.fsPath, "llmcontext.yaml");
+    const candidate = path.join(folder.uri.fsPath, "gencontext.yaml");
     if (fs.existsSync(candidate)) {
       return candidate;
     }
@@ -240,26 +264,26 @@ function findConfigInWorkspace(): string | undefined {
   return undefined;
 }
 
-/** Run `llmctx init` in the first workspace folder root. */
+/** Run `genctx init` in the first workspace folder root. */
 async function runCliInit(): Promise<void> {
   const root = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
   if (!root) {
     void vscode.window.showErrorMessage(
-      "llmctx: no workspace folder open — cannot run init"
+      "genctx: no workspace folder open - cannot run init"
     );
     return;
   }
 
   const terminal = vscode.window.createTerminal({
-    name: "llmctx init",
+    name: "genctx init",
     cwd: root,
   });
-  terminal.sendText("llmctx init", /* addNewLine */ true);
+  terminal.sendText("genctx init", /* addNewLine */ true);
   terminal.show();
 
   // Give the terminal a moment then open the file if it appeared.
   await new Promise<void>((resolve) => setTimeout(resolve, 1_500));
-  const created = path.join(root, "llmcontext.yaml");
+  const created = path.join(root, "gencontext.yaml");
   if (fs.existsSync(created)) {
     const uri = vscode.Uri.file(created);
     await vscode.window.showTextDocument(uri);

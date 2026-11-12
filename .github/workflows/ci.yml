@@ -15,7 +15,7 @@ concurrency:
 env:
   CARGO_TERM_COLOR: always
   # Keep the daemon's startup update check out of test runs.
-  LLMCTX_NO_UPDATE_CHECK: "1"
+  GENCTX_NO_UPDATE_CHECK: "1"
 
 jobs:
   rust:

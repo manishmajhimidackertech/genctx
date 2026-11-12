@@ -1,11 +1,11 @@
-// <<<LLMCTX
+// <<<GENCTX
 // FILE: crates/cli/src/main.rs
-// ROLE: CLI binary — init, index, pack, map, reindex, extract, migrate, gc, mcp commands via clap
+// ROLE: CLI binary - init, index, pack, map, reindex, extract, migrate, gc, mcp commands via clap
 // EXPORTS: NONE (binary)
 // IMPORTS: crates/core/src/process.rs, crates/core/src/pack.rs, crates/core/src/store.rs, crates/core/src/migrate.rs, crates/core/src/config.rs, crates/cli/src/mcp.rs
 // USED BY: vscode-extension/src/pack.ts (shells out to pack/map/reindex)
-// NOTES: index respects .gitignore + llmctx_ignore and never descends into .llmctx/; on Linux the clipboard is served by a detached helper so it survives this process
-// LLMCTX>>>
+// NOTES: index respects .gitignore + genctx_ignore and never descends into .genctx/; on Linux the clipboard is served by a detached helper so it survives this process
+// GENCTX>>>
 
 mod mcp;
 
@@ -21,8 +21,9 @@ use ignore::WalkBuilder;
 use tokio::sync::mpsc;
 use tracing::{error, info, warn};
 
-use llmctx_core::{
+use genctx_core::{
     config::{self, ProjectConfig, CONFIG_FILENAME},
+    filter, graph,
     migrate::{self, ImportOutcome},
     ollama::{OllamaClient, OllamaError},
     pack,
@@ -34,9 +35,9 @@ use llmctx_core::{
 
 #[derive(Parser, Debug)]
 #[command(
-    name = "llmctx",
+    name = "genctx",
     version,
-    about = "llmctx — attach LLM context to your source files"
+    about = "genctx - attach LLM context to your source files"
 )]
 struct Cli {
     #[command(subcommand)]
@@ -45,7 +46,7 @@ struct Cli {
 
 #[derive(Subcommand, Debug)]
 enum Command {
-    /// Write a llmcontext.yaml template in the current directory (non-interactive).
+    /// Write a gencontext.yaml template in the current directory (non-interactive).
     Init,
 
     /// Walk all project files and generate/extract context for each one.
@@ -90,6 +91,25 @@ enum Command {
         copy: bool,
     },
 
+    /// Print the project's dependency graph: which file imports which.
+    ///
+    /// Built by scanning import statements - no Ollama - and kept in the
+    /// project's store, so only files changed since the last run are read.
+    Graph {
+        /// Any directory inside the project (default: current working directory).
+        #[arg(default_value = ".")]
+        dir: PathBuf,
+
+        /// Print the whole graph as JSON (nodes with role and context state,
+        /// and edges), as the VS Code graph view reads it.
+        #[arg(long, conflicts_with = "copy")]
+        json: bool,
+
+        /// Copy to the clipboard instead of printing.
+        #[arg(long)]
+        copy: bool,
+    },
+
     /// Force Ollama regeneration for a single file, bypassing the extraction check.
     Reindex {
         /// Source file to reindex.
@@ -106,8 +126,8 @@ enum Command {
         force: bool,
     },
 
-    /// Copy context from NTFS Alternate Data Streams (llmctx 0.1) into the
-    /// project's .llmctx store. Windows only; safe to run more than once.
+    /// Copy context from NTFS Alternate Data Streams (genctx 0.1) into the
+    /// project's .genctx store. Windows only; safe to run more than once.
     Migrate {
         /// Directory to migrate (default: current working directory).
         #[arg(default_value = ".")]
@@ -156,8 +176,8 @@ async fn main() -> Result<()> {
         .with_writer(std::io::stderr)
         .with_env_filter(
             tracing_subscriber::EnvFilter::from_default_env()
-                .add_directive(format!("llmctx={default_level}").parse()?)
-                .add_directive(format!("llmctx_core={default_level}").parse()?),
+                .add_directive(format!("genctx={default_level}").parse()?)
+                .add_directive(format!("genctx_core={default_level}").parse()?),
         )
         .init();
 
@@ -172,6 +192,7 @@ async fn main() -> Result<()> {
             with_imports,
         } => cmd_pack(&file, stdout, with_imports)?,
         Command::Map { dir, copy } => cmd_map(&dir, copy)?,
+        Command::Graph { dir, json, copy } => cmd_graph(&dir, json, copy)?,
         Command::Reindex { file } => cmd_reindex(&file, Arc::clone(&client)).await?,
         Command::Extract { file, force } => cmd_extract(&file, Arc::clone(&client), force).await?,
         Command::Migrate {
@@ -191,12 +212,12 @@ async fn main() -> Result<()> {
 fn cmd_init() -> Result<()> {
     let dest = Path::new(CONFIG_FILENAME);
     if dest.exists() {
-        eprintln!("{CONFIG_FILENAME} already exists — not overwriting.");
+        eprintln!("{CONFIG_FILENAME} already exists - not overwriting.");
         return Ok(());
     }
 
-    let template = r##"# llmctx project configuration
-# Edit this file, then run `llmctx index` to generate context for all files.
+    let template = r##"# genctx project configuration
+# Edit this file, then run `genctx index` to generate context for all files.
 
 project: ""  # your project name here
 stack: ""    # e.g. Rust, tokio, serde
@@ -208,15 +229,15 @@ conventions:
 
 # Files to skip in addition to those already excluded by .gitignore.
 # Supports glob patterns relative to this file.
-llmctx_ignore:
+genctx_ignore:
   # - "generated/**"
   # - "vendor/**"
 
-# Ollama settings (defaults shown — remove to use defaults)
+# Ollama settings (defaults shown - remove to use defaults)
 #
 # Only a server on this machine is accepted here, because this file is part
-# of the repository. To use a remote server, set LLMCTX_OLLAMA_URL (or
-# `llmctx.ollamaUrl` in VS Code) instead.
+# of the repository. To use a remote server, set GENCTX_OLLAMA_URL (or
+# `genctx.ollamaUrl` in VS Code) instead.
 # ollama_url: "http://127.0.0.1:11434"
 # ollama_model: "phi3:mini"
 #
@@ -226,7 +247,7 @@ llmctx_ignore:
 # ollama_concurrency: 1
 #
 # Per-request budget for one generation. Small models on modest hardware can
-# take minutes for a few kilobytes of source — raise this if you see timeouts.
+# take minutes for a few kilobytes of source - raise this if you see timeouts.
 # ollama_timeout_secs: 300
 #
 # Files larger than this are skipped instead of sent. A small model's context
@@ -240,7 +261,7 @@ llmctx_ignore:
 "##;
 
     std::fs::write(dest, template).with_context(|| format!("failed to write {CONFIG_FILENAME}"))?;
-    println!("Created {CONFIG_FILENAME} — edit it, then run `llmctx index`.");
+    println!("Created {CONFIG_FILENAME} - edit it, then run `genctx index`.");
     Ok(())
 }
 
@@ -251,48 +272,29 @@ fn load_dir_config(dir: &Path) -> (PathBuf, ProjectConfig) {
     match config::find_config(dir).and_then(|p| config::load_config(&p).map(|c| (p, c))) {
         Ok(pair) => pair,
         Err(e) => {
-            warn!("no config found in {}: {e} — using defaults", dir.display());
+            warn!("no config found in {}: {e} - using defaults", dir.display());
             (dir.join(CONFIG_FILENAME), ProjectConfig::default())
         }
     }
 }
 
-/// Walker over the project files under `dir`: honours .gitignore (even
-/// outside a git checkout, like the daemon) and the config's `llmctx_ignore`,
-/// and never descends into the context store.
+/// Walker over the project files under `dir` (see
+/// [`filter::project_walker`]).
 fn project_walker(dir: &Path, config_path: &Path, config: &ProjectConfig) -> Result<WalkBuilder> {
-    let mut walker = WalkBuilder::new(dir);
-    walker.standard_filters(true); // honours .gitignore, .git/, hidden files
-    walker.require_git(false);
-
-    // Add llmctx_ignore patterns as overrides.
-    // `ignore` crate supports adding override globs directly.
-    let mut overrides =
-        ignore::overrides::OverrideBuilder::new(config_path.parent().unwrap_or(dir));
-    for pattern in &config.llmctx_ignore {
-        // Prefix with `!` to turn them into ignore patterns (OverrideBuilder
-        // treats un-prefixed patterns as whitelist; `!` means exclude).
-        overrides
-            .add(&format!("!{pattern}"))
-            .with_context(|| format!("invalid llmctx_ignore pattern: {pattern}"))?;
-    }
-    walker.overrides(overrides.build()?);
-
-    // Hidden-file filtering already skips `.llmctx/` on most platforms, but
-    // Windows decides "hidden" by attribute — so exclude it explicitly.
-    walker.filter_entry(|e| e.file_name() != STORE_DIR);
-    Ok(walker)
+    let override_root = config_path.parent().unwrap_or(dir);
+    filter::project_walker(dir, override_root, &config.genctx_ignore)
+        .map_err(|e| anyhow::anyhow!(e))
 }
 
 async fn cmd_index(dir: &Path, client: Arc<OllamaClient>, force: bool) -> Result<()> {
-    // Load config to get llmctx_ignore and concurrency setting.
+    // Load config to get genctx_ignore and concurrency setting.
     let (config_path, config) = load_dir_config(dir);
     let concurrency = config.ollama_concurrency_or_default();
 
     // ── Pre-flight ────────────────────────────────────────────────────────────
     // Probe Ollama once before doing any work. Without this, a stopped server
     // is only discovered one file at a time, each after a full generation
-    // timeout — turning a five-second diagnosis into a multi-minute one.
+    // timeout - turning a five-second diagnosis into a multi-minute one.
     match client.list_models(&config).await {
         Ok(models) => {
             let want = config.ollama_model_or_default();
@@ -302,7 +304,7 @@ async fn cmd_index(dir: &Path, client: Arc<OllamaClient>, force: bool) -> Result
                 .any(|m| m == want || m.strip_suffix(":latest").is_some_and(|base| base == want));
             if !have {
                 warn!(
-                    "model '{want}' is not installed (found: {}). Run `ollama pull {want}` — \
+                    "model '{want}' is not installed (found: {}). Run `ollama pull {want}` - \
                      otherwise every file will fail or stall while Ollama tries to fetch it.",
                     if models.is_empty() {
                         "none".to_string()
@@ -323,7 +325,27 @@ async fn cmd_index(dir: &Path, client: Arc<OllamaClient>, force: bool) -> Result
         Err(e) => {
             // Reachable but odd (unexpected HTTP status, unparseable body).
             // Not worth aborting the run over.
-            warn!("could not list Ollama models: {e} — continuing anyway");
+            warn!("could not list Ollama models: {e} - continuing anyway");
+        }
+    }
+
+    // ── Dependency map ────────────────────────────────────────────────────────
+    // Scanning imports takes seconds even for a large project, and it means
+    // every Ollama call below is told the file's imports rather than asked
+    // to infer them.
+    if let Some(root) = store::project_root(dir) {
+        match ContextStore::open(&root)
+            .map_err(graph::GraphError::from)
+            .and_then(|s| {
+                graph::sync(&s)?;
+                Ok(graph::load(&s)?)
+            }) {
+            Ok(g) => info!(
+                "dependency map: {} files, {} links",
+                g.nodes.len(),
+                g.edges.len()
+            ),
+            Err(e) => warn!("could not build the dependency map: {e}"),
         }
     }
 
@@ -352,7 +374,7 @@ async fn cmd_index(dir: &Path, client: Arc<OllamaClient>, force: bool) -> Result
     let producer = tokio::task::spawn_blocking(move || {
         for entry in walker.build().flatten() {
             if entry.file_type().is_some_and(|t| t.is_file()) {
-                // send() blocks when channel is full — that's intentional
+                // send() blocks when channel is full - that's intentional
                 // backpressure so the walker doesn't outrun the workers.
                 if path_tx.send_blocking(entry.into_path()).is_err() {
                     break; // receivers dropped (shouldn't happen)
@@ -452,7 +474,7 @@ async fn cmd_index(dir: &Path, client: Arc<OllamaClient>, force: bool) -> Result
     }
 
     // Context for files deleted or renamed outside the editor would otherwise
-    // linger until `llmctx gc`; the walk just proved which files exist.
+    // linger until `genctx gc`; the walk just proved which files exist.
     let pruned = prune_under(dir).unwrap_or_else(|e| {
         warn!("could not prune stale context: {e}");
         0
@@ -466,15 +488,15 @@ async fn cmd_index(dir: &Path, client: Arc<OllamaClient>, force: bool) -> Result
     if too_large > 0 {
         println!(
             "  {too_large} file(s) exceeded ollama_max_bytes ({} bytes). Add them to \
-             llmctx_ignore, or raise the limit if your model can handle it.",
+             genctx_ignore, or raise the limit if your model can handle it.",
             config.ollama_max_bytes_or_default()
         );
     }
     if timeouts > 0 {
         println!(
-            "  {timeouts} file(s) timed out after {}s. Ollama was reachable, just slow — \
+            "  {timeouts} file(s) timed out after {}s. Ollama was reachable, just slow - \
              raise ollama_timeout_secs, lower ollama_max_bytes, or use a smaller model. \
-             Re-run `llmctx index` to retry only these.",
+             Re-run `genctx index` to retry only these.",
             config.ollama_timeout_secs_or_default()
         );
     }
@@ -494,7 +516,7 @@ fn prune_under(dir: &Path) -> Result<usize> {
     let rel = store.rel_key(dir)?;
     let removed = store.prune_missing(Some(&rel))?;
     for rel in &removed {
-        info!("{rel}: file no longer exists — context removed");
+        info!("{rel}: file no longer exists - context removed");
     }
     Ok(removed.len())
 }
@@ -511,7 +533,7 @@ enum Outcome {
     Error(bool),
 }
 
-/// True if this failure was an Ollama timeout — meaning the server answered
+/// True if this failure was an Ollama timeout - meaning the server answered
 /// the pre-flight probe and is simply slow, so a re-run is worth trying.
 fn is_ollama_timeout(e: &ProcessError) -> bool {
     matches!(e, ProcessError::Ollama(o) if o.is_timeout())
@@ -525,13 +547,13 @@ fn cmd_pack(file: &Path, stdout: bool, with_imports: bool) -> Result<()> {
 
     if !packed.has_context {
         eprintln!(
-            "warning: no context yet for {} — daemon may still be generating",
+            "warning: no context yet for {} - daemon may still be generating",
             file.display()
         );
-        if matches!(llmctx_core::ads::ads_exists(file), Ok(true)) {
+        if matches!(genctx_core::ads::ads_exists(file), Ok(true)) {
             eprintln!(
-                "hint: this file has context from an older llmctx in an NTFS stream — \
-                 run `llmctx migrate` in the project root to bring it over"
+                "hint: this file has context from an older genctx in an NTFS stream - \
+                 run `genctx migrate` in the project root to bring it over"
             );
         }
     }
@@ -543,6 +565,24 @@ fn cmd_map(dir: &Path, copy: bool) -> Result<()> {
     let root = store::project_root(dir).unwrap_or_else(|| dir.to_path_buf());
     let map = pack::project_map(&root)?;
     deliver(&map, copy, "project map")
+}
+
+fn cmd_graph(dir: &Path, json: bool, copy: bool) -> Result<()> {
+    let root = store::project_root(dir).ok_or_else(|| {
+        anyhow::anyhow!(
+            "{} is not inside a genctx project (no {CONFIG_FILENAME}, {STORE_DIR}/ or .git above it)",
+            dir.display()
+        )
+    })?;
+    let store = ContextStore::open(&root)?;
+    let stats = graph::sync(&store)?;
+    let mut g = graph::load(&store)?;
+    if json {
+        g.sync = Some(stats);
+        println!("{}", serde_json::to_string(&g)?);
+        return Ok(());
+    }
+    deliver(&graph::dependency_map(&g), copy, "dependency map")
 }
 
 /// Copy `text` to the clipboard (falling back to stdout if there is none),
@@ -567,7 +607,7 @@ fn deliver(text: &str, to_clipboard: bool, what: &str) -> Result<()> {
 
 /// On Windows and macOS the clipboard is a system service, so setting it and
 /// exiting is fine. On Linux (X11 and Wayland) the *copying process* serves
-/// the contents and they vanish when it exits — so a detached helper process
+/// the contents and they vanish when it exits - so a detached helper process
 /// holds them until something else is copied.
 fn copy_to_clipboard(text: &str) -> Result<()> {
     #[cfg(target_os = "linux")]
@@ -708,17 +748,17 @@ fn cmd_migrate(dir: &Path, remove_streams: bool) -> Result<()> {
 fn cmd_gc(dir: &Path) -> Result<()> {
     let root = store::project_root(dir).with_context(|| {
         format!(
-            "{} is not inside an llmctx project (no {CONFIG_FILENAME}, {STORE_DIR}/ or .git above it)",
+            "{} is not inside a genctx project (no {CONFIG_FILENAME}, {STORE_DIR}/ or .git above it)",
             dir.display()
         )
     })?;
     let Some(store) = ContextStore::open_existing(&root)? else {
-        println!("no context store under {} — nothing to do", root.display());
+        println!("no context store under {} - nothing to do", root.display());
         return Ok(());
     };
     let removed = store.prune_missing(None)?;
     for rel in &removed {
-        info!("{rel}: file no longer exists — context removed");
+        info!("{rel}: file no longer exists - context removed");
     }
     println!(
         "gc complete: removed {} entr{} from {}",
@@ -737,5 +777,5 @@ fn cmd_mcp(root: Option<PathBuf>) -> Result<()> {
         None => std::env::current_dir()?,
     };
     let root = store::project_root(&start).unwrap_or(start);
-    mcp::serve(llmctx_core::fsutil::absolute(&root))
+    mcp::serve(genctx_core::fsutil::absolute(&root))
 }

@@ -1,7 +1,7 @@
 "use strict";
 
-// DaemonClient against a fake llmctxd: a real TCP server on 127.0.0.1 and a
-// real discovery file, in a temporary LLMCTX_RUNTIME_DIR.
+// DaemonClient against a fake genctxd: a real TCP server on 127.0.0.1 and a
+// real discovery file, in a temporary GENCTX_RUNTIME_DIR.
 
 const test = require("node:test");
 const assert = require("node:assert/strict");
@@ -13,9 +13,9 @@ const { once } = require("node:events");
 
 const { DaemonClient, daemonFilePath } = require("../out/daemon.js");
 
-const runtimeDir = fs.mkdtempSync(path.join(os.tmpdir(), "llmctx-ext-"));
+const runtimeDir = fs.mkdtempSync(path.join(os.tmpdir(), "genctx-ext-"));
 const discoveryFile = path.join(runtimeDir, "daemon.json");
-process.env.LLMCTX_RUNTIME_DIR = runtimeDir;
+process.env.GENCTX_RUNTIME_DIR = runtimeDir;
 
 test.after(() => fs.rmSync(runtimeDir, { recursive: true, force: true }));
 
@@ -52,7 +52,7 @@ function within(promise, what, ms = 4000) {
 }
 
 /**
- * A fake llmctxd. Records every line it receives, answers a hello carrying
+ * A fake genctxd. Records every line it receives, answers a hello carrying
  * `token` with a welcome (unless `welcome` is false), and closes the
  * connection on any other token, as the real daemon does.
  */
@@ -145,10 +145,10 @@ function withEnv(vars, platform, fn) {
   }
 }
 
-test("discovery: LLMCTX_RUNTIME_DIR wins on every platform", () => {
+test("discovery: GENCTX_RUNTIME_DIR wins on every platform", () => {
   for (const platform of ["win32", "linux", "darwin"]) {
     const got = withEnv(
-      { LLMCTX_RUNTIME_DIR: "/rt", LOCALAPPDATA: "/local", XDG_RUNTIME_DIR: "/xdg" },
+      { GENCTX_RUNTIME_DIR: "/rt", LOCALAPPDATA: "/local", XDG_RUNTIME_DIR: "/xdg" },
       platform,
       daemonFilePath
     );
@@ -156,29 +156,29 @@ test("discovery: LLMCTX_RUNTIME_DIR wins on every platform", () => {
   }
 });
 
-test("discovery: Windows uses %LOCALAPPDATA%\\llmctx, and an empty override is ignored", () => {
+test("discovery: Windows uses %LOCALAPPDATA%\\genctx, and an empty override is ignored", () => {
   const got = withEnv(
-    { LLMCTX_RUNTIME_DIR: "", LOCALAPPDATA: "/local", XDG_RUNTIME_DIR: "/xdg" },
+    { GENCTX_RUNTIME_DIR: "", LOCALAPPDATA: "/local", XDG_RUNTIME_DIR: "/xdg" },
     "win32",
     daemonFilePath
   );
-  assert.equal(got, path.join("/local", "llmctx", "daemon.json"));
+  assert.equal(got, path.join("/local", "genctx", "daemon.json"));
 });
 
 test("discovery: Windows without LOCALAPPDATA has no discovery file", () => {
-  const got = withEnv({ LLMCTX_RUNTIME_DIR: undefined, LOCALAPPDATA: "" }, "win32", daemonFilePath);
+  const got = withEnv({ GENCTX_RUNTIME_DIR: undefined, LOCALAPPDATA: "" }, "win32", daemonFilePath);
   assert.equal(got, undefined);
 });
 
 test("discovery: elsewhere XDG_RUNTIME_DIR, then ~/.cache", () => {
   const xdg = withEnv(
-    { LLMCTX_RUNTIME_DIR: undefined, XDG_RUNTIME_DIR: "/run/user/1000" },
+    { GENCTX_RUNTIME_DIR: undefined, XDG_RUNTIME_DIR: "/run/user/1000" },
     "linux",
     daemonFilePath
   );
-  assert.equal(xdg, path.join("/run/user/1000", "llmctx", "daemon.json"));
-  const home = withEnv({ LLMCTX_RUNTIME_DIR: undefined, XDG_RUNTIME_DIR: undefined }, "darwin", daemonFilePath);
-  assert.equal(home, path.join(os.homedir(), ".cache", "llmctx", "daemon.json"));
+  assert.equal(xdg, path.join("/run/user/1000", "genctx", "daemon.json"));
+  const home = withEnv({ GENCTX_RUNTIME_DIR: undefined, XDG_RUNTIME_DIR: undefined }, "darwin", daemonFilePath);
+  assert.equal(home, path.join(os.homedir(), ".cache", "genctx", "daemon.json"));
 });
 
 // ── Handshake ─────────────────────────────────────────────────────────────────
@@ -365,10 +365,10 @@ test("dispose stops it reconnecting", async () => {
 test("starts daemonPath with the extra environment when no daemon is published", async () => {
   unpublish();
   const marker = path.join(runtimeDir, "started.txt");
-  const fake = path.join(runtimeDir, "fake-llmctxd.js");
+  const fake = path.join(runtimeDir, "fake-genctxd.js");
   fs.writeFileSync(
     fake,
-    `require("fs").writeFileSync(${JSON.stringify(marker)}, process.env.LLMCTX_OLLAMA_URL || "");`
+    `require("fs").writeFileSync(${JSON.stringify(marker)}, process.env.GENCTX_OLLAMA_URL || "");`
   );
   // daemonPath is started with no arguments, so node finds the script
   // through NODE_OPTIONS in the environment the client passes on.
@@ -376,7 +376,7 @@ test("starts daemonPath with the extra environment when no daemon is published",
     autoStart: true,
     daemonPath: process.execPath,
     env: {
-      LLMCTX_OLLAMA_URL: "http://gpu-box:11434",
+      GENCTX_OLLAMA_URL: "http://gpu-box:11434",
       NODE_OPTIONS: `--require ${JSON.stringify(fake)}`,
     },
   });
@@ -392,7 +392,7 @@ test("starts daemonPath with the extra environment when no daemon is published",
 
 test("reports a daemon that cannot be started, and tries only once", async () => {
   unpublish();
-  const c = client({ autoStart: true, daemonPath: path.join(runtimeDir, "no-such-llmctxd.exe") });
+  const c = client({ autoStart: true, daemonPath: path.join(runtimeDir, "no-such-genctxd.exe") });
   const failures = [];
   c.on("startFailed", (err) => failures.push(err));
   try {
@@ -408,7 +408,7 @@ test("reports a daemon that cannot be started, and tries only once", async () =>
 
 test("does not start anything when autoStart is off", async () => {
   unpublish();
-  const c = client({ autoStart: false, daemonPath: path.join(runtimeDir, "no-such-llmctxd.exe") });
+  const c = client({ autoStart: false, daemonPath: path.join(runtimeDir, "no-such-genctxd.exe") });
   const failures = [];
   c.on("startFailed", (err) => failures.push(err));
   try {

@@ -1,6 +1,6 @@
 [package]
 name        = "cpctx"
-description = "Context-preserving copy — copies files/directories and carries their llmctx context into the destination project"
+description = "Context-preserving copy - copies files/directories and carries their genctx context into the destination project"
 version.workspace     = true
 edition.workspace     = true
 authors.workspace     = true
@@ -12,7 +12,7 @@ name = "cpctx"
 path = "src/main.rs"
 
 [dependencies]
-llmctx-core         = { path = "../core" }
+genctx-core         = { path = "../core" }
 clap                = { workspace = true }
 tracing             = { workspace = true }
 tracing-subscriber  = { workspace = true }

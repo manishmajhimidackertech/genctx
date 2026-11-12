@@ -1,17 +1,17 @@
-// <<<LLMCTX
+// <<<GENCTX
 // FILE: crates/core/src/filter.rs
-// ROLE: Decide whether a single file is excluded by .gitignore/.ignore, hidden paths or llmctx_ignore
-// EXPORTS: is_ignored()
+// ROLE: Decide whether a single file is excluded by .gitignore/.ignore, hidden paths or genctx_ignore
+// EXPORTS: is_ignored(), project_walker()
 // IMPORTS: crates/core/src/fsutil.rs
 // USED BY: crates/core/src/process.rs
-// NOTES: Mirrors what `llmctx index`'s walker skips, so the daemon (one file at a time) and index agree
-// LLMCTX>>>
+// NOTES: Mirrors what `genctx index`'s walker skips, so the daemon (one file at a time) and index agree
+// GENCTX>>>
 
-//! One-file version of the rules `llmctx index` applies while walking.
+//! One-file version of the rules `genctx index` applies while walking.
 //!
 //! The walker prunes whole directories as it goes; the daemon only ever sees
 //! single saved files, so it needs the same answer for one path. Both now go
-//! through `process_file()`, which calls [`is_ignored`] — a file that `index`
+//! through `process_file()`, which calls [`is_ignored`] - a file that `index`
 //! would skip is never read, sent to Ollama or stored because it was saved.
 
 use std::path::{Path, PathBuf};
@@ -19,7 +19,7 @@ use std::path::{Path, PathBuf};
 use ignore::{
     gitignore::{Gitignore, GitignoreBuilder},
     overrides::OverrideBuilder,
-    Match,
+    Match, WalkBuilder,
 };
 use tracing::warn;
 
@@ -31,14 +31,14 @@ const IGNORE_FILES: &[&str] = &[".ignore", ".gitignore"];
 /// True when `path` must not be processed:
 ///
 /// - any path component below `root` is hidden (starts with `.`), which also
-///   covers `.git/`, `.env` and the `.llmctx/` store itself;
-/// - it matches an `llmctx_ignore` pattern (relative to `root`);
+///   covers `.git/`, `.env` and the `.genctx/` store itself;
+/// - it matches an `genctx_ignore` pattern (relative to `root`);
 /// - it is ignored by a `.ignore`/`.gitignore` between it and the repository
 ///   root, by `.git/info/exclude`, or by git's global excludes file.
 ///
 /// `.gitignore` files are honoured even outside a git checkout, matching
-/// `llmctx index`. Paths outside `root` are never reported as ignored.
-pub fn is_ignored(root: &Path, path: &Path, llmctx_ignore: &[String]) -> bool {
+/// `genctx index`. Paths outside `root` are never reported as ignored.
+pub fn is_ignored(root: &Path, path: &Path, genctx_ignore: &[String]) -> bool {
     let path = absolute(path);
     let root = absolute(root);
     let Ok(rel) = path.strip_prefix(&root) else {
@@ -53,12 +53,12 @@ pub fn is_ignored(root: &Path, path: &Path, llmctx_ignore: &[String]) -> bool {
         return true;
     }
 
-    // ── llmctx_ignore ────────────────────────────────────────────────────
-    if !llmctx_ignore.is_empty() {
+    // ── genctx_ignore ────────────────────────────────────────────────────
+    if !genctx_ignore.is_empty() {
         let mut builder = OverrideBuilder::new(&root);
-        for pattern in llmctx_ignore {
+        for pattern in genctx_ignore {
             if let Err(e) = builder.add(&format!("!{pattern}")) {
-                warn!("invalid llmctx_ignore pattern {pattern:?}: {e}");
+                warn!("invalid genctx_ignore pattern {pattern:?}: {e}");
             }
         }
         if let Ok(overrides) = builder.build() {
@@ -127,6 +127,40 @@ pub fn is_ignored(root: &Path, path: &Path, llmctx_ignore: &[String]) -> bool {
     false
 }
 
+/// Walker over the project files under `dir`, applying the same rules as
+/// [`is_ignored`]: `.gitignore`/`.ignore` (even outside a git checkout),
+/// hidden paths, and `genctx_ignore` patterns (relative to `override_root`,
+/// the directory holding the config). It never descends into the store.
+///
+/// Shared by `genctx index` and the dependency graph, so both see the same
+/// set of files.
+pub fn project_walker(
+    dir: &Path,
+    override_root: &Path,
+    genctx_ignore: &[String],
+) -> Result<WalkBuilder, String> {
+    let mut walker = WalkBuilder::new(dir);
+    walker.standard_filters(true); // honours .gitignore, .git/, hidden files
+    walker.require_git(false);
+
+    // `!pattern` turns an override into an exclusion (un-prefixed override
+    // patterns are a whitelist).
+    let mut overrides = OverrideBuilder::new(override_root);
+    for pattern in genctx_ignore {
+        overrides
+            .add(&format!("!{pattern}"))
+            .map_err(|e| format!("invalid genctx_ignore pattern {pattern:?}: {e}"))?;
+    }
+    walker.overrides(overrides.build().map_err(|e| e.to_string())?);
+
+    // Hidden-file filtering already skips the store on most platforms, but
+    // Windows decides "hidden" by attribute - so exclude it explicitly.
+    walker.filter_entry(|e| {
+        e.file_name() != crate::store::STORE_DIR && e.file_name() != crate::store::LEGACY_STORE_DIR
+    });
+    Ok(walker)
+}
+
 /// `Some(true)` ignored, `Some(false)` explicitly re-included, `None` no rule.
 fn decide(gi: &Gitignore, dir: &Path, path: &Path) -> Option<bool> {
     // Pass a path relative to the matcher's own root: the matcher panics on
@@ -158,7 +192,7 @@ mod tests {
         let root = dir.path();
         assert!(is_ignored(root, &touch(root, ".env"), &[]));
         assert!(is_ignored(root, &touch(root, ".github/ci.yml"), &[]));
-        assert!(is_ignored(root, &touch(root, ".llmctx/context.db"), &[]));
+        assert!(is_ignored(root, &touch(root, ".genctx/context.db"), &[]));
         assert!(!is_ignored(root, &touch(root, "src/main.rs"), &[]));
     }
 
@@ -192,7 +226,7 @@ mod tests {
     }
 
     #[test]
-    fn llmctx_ignore_patterns_apply_to_files_and_directories() {
+    fn genctx_ignore_patterns_apply_to_files_and_directories() {
         let dir = TempDir::new().unwrap();
         let root = dir.path();
         let patterns = vec![

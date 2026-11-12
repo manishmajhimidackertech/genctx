@@ -1,11 +1,11 @@
-// <<<LLMCTX
+// <<<GENCTX
 // FILE: crates/core/src/ollama.rs
 // ROLE: Send a source file to Ollama and return validated six-field context
 // EXPORTS: OllamaClient, OllamaError, GeneratedContext, resolve_ollama_url(), OLLAMA_URL_ENV
 // IMPORTS: crates/core/src/config.rs
 // USED BY: crates/core/src/process.rs, crates/cli/src/main.rs, crates/daemon/src/main.rs
-// NOTES: Repo configs may only point at a local Ollama; LLMCTX_OLLAMA_URL (set by the user) may point anywhere. Output is JSON, validated, retried once
-// LLMCTX>>>
+// NOTES: Repo configs may only point at a local Ollama; GENCTX_OLLAMA_URL (set by the user) may point anywhere. Output is JSON, validated, retried once
+// GENCTX>>>
 
 use std::time::Duration;
 
@@ -16,8 +16,8 @@ use tracing::warn;
 use crate::config::ProjectConfig;
 
 /// Environment variable through which the *user* (not a repository) chooses
-/// the Ollama server. The VS Code extension sets it from `llmctx.ollamaUrl`.
-pub const OLLAMA_URL_ENV: &str = "LLMCTX_OLLAMA_URL";
+/// the Ollama server. The VS Code extension sets it from `genctx.ollamaUrl`.
+pub const OLLAMA_URL_ENV: &str = "GENCTX_OLLAMA_URL";
 
 const DEFAULT_OLLAMA_URL: &str = "http://127.0.0.1:11434";
 
@@ -28,7 +28,7 @@ pub enum OllamaError {
     /// Kept strictly separate from `Timeout`: reqwest renders both as
     /// "error sending request for url (...)", so collapsing them into one
     /// variant makes a slow model indistinguishable from a dead server.
-    #[error("Ollama is unreachable at {url} — is `ollama serve` running? ({source})")]
+    #[error("Ollama is unreachable at {url} - is `ollama serve` running? ({source})")]
     Unreachable {
         url: String,
         #[source]
@@ -36,7 +36,7 @@ pub enum OllamaError {
     },
 
     #[error(
-        "Ollama did not respond within {secs}s at {url} — the server is up but the model is \
+        "Ollama did not respond within {secs}s at {url} - the server is up but the model is \
          too slow for this input. Raise `ollama_timeout_secs`, lower `ollama_max_bytes`, or \
          use a smaller model."
     )]
@@ -65,10 +65,10 @@ pub enum OllamaError {
     InvalidOutput { detail: String },
 
     #[error(
-        "refusing to send source to {url}: `ollama_url` in llmcontext.yaml may only point at this \
+        "refusing to send source to {url}: `ollama_url` in gencontext.yaml may only point at this \
          machine (localhost, 127.0.0.1, ::1), because a cloned repository must not decide where \
          your code goes. To use a remote Ollama, set the {OLLAMA_URL_ENV} environment variable \
-         (or `llmctx.ollamaUrl` in VS Code)."
+         (or `genctx.ollamaUrl` in VS Code)."
     )]
     RemoteNotAllowed { url: String },
 
@@ -125,9 +125,9 @@ pub struct GeneratedContext {
 
 /// The Ollama base URL to use for a project.
 ///
-/// `LLMCTX_OLLAMA_URL` wins and may point anywhere: only the user can set
-/// it. `ollama_url` from `llmcontext.yaml` comes from the repository, so it
-/// may only name this machine — otherwise cloning a repository and saving a
+/// `GENCTX_OLLAMA_URL` wins and may point anywhere: only the user can set
+/// it. `ollama_url` from `gencontext.yaml` comes from the repository, so it
+/// may only name this machine - otherwise cloning a repository and saving a
 /// file could ship your source code to a server of the repository's choosing.
 pub fn resolve_ollama_url(config: &ProjectConfig) -> Result<String, OllamaError> {
     if let Ok(url) = std::env::var(OLLAMA_URL_ENV) {
@@ -207,7 +207,7 @@ pub struct OllamaClient {
 }
 
 /// Timeout for the cheap `/api/tags` liveness probe. This one *should* be
-/// short — if the server is up it answers instantly.
+/// short - if the server is up it answers instantly.
 const HEALTH_TIMEOUT_SECS: u64 = 10;
 
 impl OllamaClient {
@@ -223,8 +223,8 @@ impl OllamaClient {
 
     /// Ask Ollama for its installed model list.
     ///
-    /// Used as a pre-flight check by `llmctx index` so a stopped server fails
-    /// once, immediately, with an accurate message — instead of once per file
+    /// Used as a pre-flight check by `genctx index` so a stopped server fails
+    /// once, immediately, with an accurate message - instead of once per file
     /// after a full timeout each.
     pub async fn list_models(&self, config: &ProjectConfig) -> Result<Vec<String>, OllamaError> {
         let url = format!("{}/api/tags", resolve_ollama_url(config)?);
@@ -256,17 +256,24 @@ impl OllamaClient {
     ///
     /// The answer is validated; an unusable one (not JSON, no ROLE) is
     /// retried once before giving up, since small models occasionally ramble.
+    ///
+    /// `known_imports` is the file's dependencies as the static scan found
+    /// them (`graph.rs`), when its language has a scanner. The model is then
+    /// told them instead of asked for them, and they become `IMPORTS:`
+    /// verbatim: less for a small model to produce, and nothing for it to
+    /// get wrong.
     pub async fn generate(
         &self,
         config: &ProjectConfig,
         rel_path: &str,
         source_code: &str,
+        known_imports: Option<&[String]>,
     ) -> Result<GeneratedContext, OllamaError> {
-        let prompt = build_prompt(config, rel_path, source_code);
+        let prompt = build_prompt(config, rel_path, source_code, known_imports);
         let mut last = String::new();
         for attempt in 1..=2 {
             let raw = self.generate_raw(config, &prompt).await?;
-            match parse_generated(&raw, rel_path) {
+            match parse_generated(&raw, rel_path, known_imports) {
                 Ok(fields) => return Ok(GeneratedContext { fields }),
                 Err(detail) => {
                     warn!(rel_path, attempt, "unusable Ollama answer: {detail}");
@@ -311,7 +318,7 @@ impl OllamaClient {
             return Err(OllamaError::HttpError { status, body });
         }
 
-        // The deadline covers the body too — a stalled read here is still a
+        // The deadline covers the body too - a stalled read here is still a
         // timeout, not a parse failure.
         let parsed: GenerateResponse = resp.json().await.map_err(|e| {
             if e.is_timeout() {
@@ -336,12 +343,16 @@ impl OllamaClient {
 
 /// Turn the model's answer into the six field lines, or explain why not.
 ///
-/// JSON is expected (`format: "json"`), but a `KEY: value` answer — what an
-/// older Ollama that ignores `format` tends to produce — is accepted too.
+/// JSON is expected (`format: "json"`), but a `KEY: value` answer - what an
+/// older Ollama that ignores `format` tends to produce - is accepted too.
 /// `FILE:` is always the real path and `USED BY:` is always `UNKNOWN`: the
 /// model sees one file and cannot know either; `USED BY` is computed from the
 /// other files' `IMPORTS` when context is packed.
-fn parse_generated(raw: &str, rel_path: &str) -> Result<String, String> {
+fn parse_generated(
+    raw: &str,
+    rel_path: &str,
+    known_imports: Option<&[String]>,
+) -> Result<String, String> {
     let cleaned = strip_code_fence(raw);
     let mut values = std::collections::HashMap::<String, String>::new();
 
@@ -373,10 +384,14 @@ fn parse_generated(raw: &str, rel_path: &str) -> Result<String, String> {
             cleaned.chars().take(120).collect::<String>()
         ));
     }
+    let imports = match known_imports {
+        Some([]) => "NONE".to_string(),
+        Some(list) => list.join(", "),
+        None => get("imports", "NONE"),
+    };
     Ok(format!(
-        "FILE: {rel_path}\nROLE: {role}\nEXPORTS: {}\nIMPORTS: {}\nUSED BY: UNKNOWN\nNOTES: {}",
+        "FILE: {rel_path}\nROLE: {role}\nEXPORTS: {}\nIMPORTS: {imports}\nUSED BY: UNKNOWN\nNOTES: {}",
         get("exports", "NONE"),
-        get("imports", "NONE"),
         get("notes", "NONE"),
     ))
 }
@@ -424,11 +439,31 @@ impl Default for OllamaClient {
 
 // ── Prompt builder ───────────────────────────────────────────────────────────
 
-fn build_prompt(config: &ProjectConfig, rel_path: &str, source_code: &str) -> String {
+fn build_prompt(
+    config: &ProjectConfig,
+    rel_path: &str,
+    source_code: &str,
+    known_imports: Option<&[String]>,
+) -> String {
     let project = config.project.as_deref().unwrap_or("(unknown)");
     let stack = config.stack.as_deref().unwrap_or("");
     let task = config.task.as_deref().unwrap_or("");
     let conventions = config.conventions.join("\n- ");
+
+    // Known dependencies are context, not a question.
+    let (imports_key, imports_known) = match known_imports {
+        Some(list) => (
+            String::new(),
+            format!(
+                "Project files it imports (already known): {}\n",
+                if list.is_empty() { "none".to_string() } else { list.join(", ") }
+            ),
+        ),
+        None => (
+            "\n  \"imports\": \"other files of this project it depends on, as paths relative to the project root, comma separated, or NONE\",".to_string(),
+            String::new(),
+        ),
+    };
 
     format!(
         r#"You are a code context generator for LLM assistance.
@@ -443,13 +478,12 @@ Analyze the file below and answer with ONLY a JSON object with exactly these key
 
 {{
   "role": "one sentence: what this file does",
-  "exports": "key functions/classes/constants it exposes, comma separated, or NONE",
-  "imports": "other files of this project it depends on, as paths relative to the project root, comma separated, or NONE",
+  "exports": "key functions/classes/constants it exposes, comma separated, or NONE",{imports_key}
   "notes": "anything unusual an LLM should know, or NONE"
 }}
 
 File path: {rel_path}
-
+{imports_known}
 ```
 {source_code}
 ```"#
@@ -468,7 +502,7 @@ mod tests {
             project: Some("TestProj".into()),
             ..Default::default()
         };
-        let prompt = build_prompt(&cfg, "src/foo.rs", "fn foo() {}");
+        let prompt = build_prompt(&cfg, "src/foo.rs", "fn foo() {}", None);
         assert!(prompt.contains("src/foo.rs"));
         assert!(prompt.contains("fn foo()"));
         assert!(prompt.contains("TestProj"));
@@ -478,7 +512,7 @@ mod tests {
     fn json_answers_become_six_fields() {
         let raw = r#"{"Role": "Parses config", "exports": ["load", "save"], "IMPORTS": "a.rs", "notes": null, "file": "wrong.rs", "used_by": "x.rs"}"#;
         assert_eq!(
-            parse_generated(raw, "src/config.rs").unwrap(),
+            parse_generated(raw, "src/config.rs", None).unwrap(),
             "FILE: src/config.rs\nROLE: Parses config\nEXPORTS: load, save\nIMPORTS: a.rs\nUSED BY: UNKNOWN\nNOTES: NONE"
         );
     }
@@ -486,20 +520,20 @@ mod tests {
     #[test]
     fn fenced_and_plain_text_answers_are_accepted() {
         let fenced = "```json\n{\"role\": \"Does\\nthings\"}\n```";
-        assert!(parse_generated(fenced, "a.rs")
+        assert!(parse_generated(fenced, "a.rs", None)
             .unwrap()
             .contains("ROLE: Does things"));
 
         let text = "Sure! Here it is:\nROLE: Handles auth\nEXPORTS: login()\n";
-        let fields = parse_generated(text, "a.rs").unwrap();
+        let fields = parse_generated(text, "a.rs", None).unwrap();
         assert!(fields.contains("ROLE: Handles auth"));
         assert!(fields.contains("EXPORTS: login()"));
     }
 
     #[test]
     fn answers_without_a_role_are_rejected() {
-        assert!(parse_generated("I cannot help with that.", "a.rs").is_err());
-        assert!(parse_generated("{\"exports\": \"x\"}", "a.rs").is_err());
+        assert!(parse_generated("I cannot help with that.", "a.rs", None).is_err());
+        assert!(parse_generated("{\"exports\": \"x\"}", "a.rs", None).is_err());
     }
 
     #[test]
@@ -543,12 +577,27 @@ mod tests {
     }
 
     #[test]
+    fn known_imports_are_told_not_asked_and_win() {
+        let cfg = ProjectConfig::default();
+        let known = vec!["src/a.rs".to_string(), "src/b.rs".to_string()];
+        let prompt = build_prompt(&cfg, "x.rs", "", Some(&known));
+        assert!(!prompt.contains("\"imports\""));
+        assert!(prompt.contains("already known): src/a.rs, src/b.rs"));
+
+        let raw = r#"{"role": "r", "imports": "made/up.rs"}"#;
+        let fields = parse_generated(raw, "x.rs", Some(&known)).unwrap();
+        assert!(fields.contains("IMPORTS: src/a.rs, src/b.rs\n"));
+        let fields = parse_generated(raw, "x.rs", Some(&[])).unwrap();
+        assert!(fields.contains("IMPORTS: NONE\n"));
+    }
+
+    #[test]
     fn prompt_uses_conventions() {
         let cfg = ProjectConfig {
             conventions: vec!["No unwrap".into(), "Use thiserror".into()],
             ..Default::default()
         };
-        let prompt = build_prompt(&cfg, "x.rs", "");
+        let prompt = build_prompt(&cfg, "x.rs", "", None);
         assert!(prompt.contains("No unwrap"));
         assert!(prompt.contains("Use thiserror"));
     }

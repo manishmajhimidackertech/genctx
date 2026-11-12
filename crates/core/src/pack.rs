@@ -1,16 +1,16 @@
-// <<<LLMCTX
+// <<<GENCTX
 // FILE: crates/core/src/pack.rs
-// ROLE: Read-only views of stored context — packed text for an LLM, rendered per-file context, project map, search
+// ROLE: Read-only views of stored context - packed text for an LLM, rendered per-file context, project map, search
 // EXPORTS: pack(), file_context(), project_map(), search(), Packed, FileContext
-// IMPORTS: crates/core/src/store.rs, crates/core/src/config.rs, crates/core/src/process.rs
+// IMPORTS: crates/core/src/store.rs, crates/core/src/config.rs, crates/core/src/process.rs, crates/core/src/graph.rs
 // USED BY: crates/cli/src/main.rs (pack, map, mcp)
 // NOTES: Never writes to the store; the project header and USED BY are computed here, at read time
-// LLMCTX>>>
+// GENCTX>>>
 
 //! Everything that turns stored context into text for an LLM.
 //!
 //! Two things are computed here rather than stored, so they are always
-//! current: the project header (from today's `llmcontext.yaml`) and `USED BY`
+//! current: the project header (from today's `gencontext.yaml`) and `USED BY`
 //! (from the other files' `IMPORTS`).
 
 use std::path::Path;
@@ -95,7 +95,7 @@ pub fn pack(path: &Path, with_imports: bool) -> Result<Packed, ProcessError> {
             }
         }
         None => {
-            out.push_str("[no context yet — daemon may still be generating, try again shortly]\n")
+            out.push_str("[no context yet - daemon may still be generating, try again shortly]\n")
         }
     }
 
@@ -114,25 +114,27 @@ pub fn pack(path: &Path, with_imports: bool) -> Result<Packed, ProcessError> {
     })
 }
 
-/// One line per file with stored context — path and ROLE — under the
+/// One line per file with stored context - path and ROLE - under the
 /// project header. A compact overview to start an LLM session with.
 pub fn project_map(root: &Path) -> Result<String, ProcessError> {
-    let config = config::load_config(&root.join(config::CONFIG_FILENAME)).unwrap_or_default();
+    let config = config::find_config(root)
+        .and_then(|p| config::load_config(&p))
+        .unwrap_or_default();
     let mut out = format!(
         "=== PROJECT ===\n{}\n=== FILES ===\n",
         config.header_block()
     );
     let Some(store) = ContextStore::open_existing(root)? else {
-        out.push_str("(no stored context yet — run `llmctx index`)\n");
+        out.push_str("(no stored context yet - run `genctx index`)\n");
         return Ok(out);
     };
     let all = store.all()?;
     if all.is_empty() {
-        out.push_str("(no stored context yet — run `llmctx index`)\n");
+        out.push_str("(no stored context yet - run `genctx index`)\n");
     }
     for c in all {
         let role = store::field_value(&c.fields, "ROLE").unwrap_or("?");
-        out.push_str(&format!("{} — {role}\n", c.rel_path));
+        out.push_str(&format!("{} - {role}\n", c.rel_path));
     }
     Ok(out)
 }
@@ -170,23 +172,33 @@ fn with_used_by(store: &ContextStore, rel_path: &str, fields: &str) -> String {
     }
 }
 
-/// Stored context of each project file named in `fields`' IMPORTS.
+/// Stored context of each project file this one depends on: those named in
+/// `fields`' IMPORTS, plus those the dependency graph found by scanning the
+/// source (so a file whose IMPORTS line is incomplete still brings its
+/// dependencies along).
 fn imported_contexts(path: &Path, fields: &str) -> Result<Vec<(String, String)>, ProcessError> {
-    let Some((store, _)) = ContextStore::open_existing_for_file(path)? else {
+    let Some((store, rel_path)) = ContextStore::open_existing_for_file(path)? else {
         return Ok(Vec::new());
     };
-    let imports = store::field_value(fields, "IMPORTS").unwrap_or("");
-    let mut out = Vec::new();
-    for rel in imports.split(',').map(|p| {
-        p.trim()
-            .trim_matches(|c| c == '`' || c == '"' || c == '\'')
-            .replace('\\', "/")
-            .trim_start_matches("./")
-            .to_string()
-    }) {
-        if rel.is_empty() {
-            continue;
+    let declared = store::field_value(fields, "IMPORTS").unwrap_or("");
+    let mut targets: Vec<String> = declared
+        .split(',')
+        .map(|p| {
+            p.trim()
+                .trim_matches(|c| c == '`' || c == '"' || c == '\'')
+                .replace('\\', "/")
+                .trim_start_matches("./")
+                .to_string()
+        })
+        .filter(|p| !p.is_empty())
+        .collect();
+    for dep in store.imports_of(&rel_path)? {
+        if !targets.contains(&dep) {
+            targets.push(dep);
         }
+    }
+    let mut out = Vec::new();
+    for rel in targets {
         if let Some(StoredContext { fields, .. }) = store.get(&rel)? {
             out.push((rel.clone(), with_used_by(&store, &rel, &fields)));
         }
@@ -247,7 +259,7 @@ mod tests {
             .text
             .contains("TASK: first task"));
 
-        // Editing the config changes every pack immediately — nothing stale.
+        // Editing the config changes every pack immediately - nothing stale.
         fs::write(
             dir.path().join(config::CONFIG_FILENAME),
             "project: P\ntask: second task\n",
@@ -291,6 +303,38 @@ mod tests {
     }
 
     #[test]
+    fn with_imports_uses_scanned_dependencies_too() {
+        let (dir, store) = project();
+        let app = write(&dir, "app.py", "import helpers\n");
+        write(&dir, "helpers.py", "H = 1\n");
+        store
+            .put(
+                "helpers.py",
+                &content_hash("H = 1\n"),
+                "llm",
+                "FILE: helpers.py\nROLE: help",
+            )
+            .unwrap();
+        // The stored IMPORTS line missed the dependency.
+        store
+            .put(
+                "app.py",
+                &content_hash("import helpers\n"),
+                "llm",
+                "FILE: app.py\nROLE: entry\nIMPORTS: NONE",
+            )
+            .unwrap();
+        crate::graph::sync(&store).unwrap();
+        let packed = pack(&app, true).unwrap().text;
+        assert!(packed.contains("=== CONTEXT: helpers.py (imported) ==="));
+        assert!(file_context(&dir.path().join("helpers.py"))
+            .unwrap()
+            .unwrap()
+            .fields
+            .contains("USED BY: app.py"));
+    }
+
+    #[test]
     fn stale_context_is_labelled_and_missing_context_is_reported() {
         let (dir, store) = project();
         let file = write(&dir, "a.py", "changed\n");
@@ -322,7 +366,7 @@ mod tests {
             .put("b.py", "2", "llm", "FILE: b.py\nROLE: Renders HTML")
             .unwrap();
         let map = project_map(dir.path()).unwrap();
-        assert!(map.contains("a.py — Parses tokens\nb.py — Renders HTML\n"));
+        assert!(map.contains("a.py - Parses tokens\nb.py - Renders HTML\n"));
         let hits = search(dir.path(), "html").unwrap();
         assert_eq!(hits.len(), 1);
         assert_eq!(hits[0].rel_path, "b.py");

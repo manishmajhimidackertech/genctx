@@ -1,5 +1,5 @@
 [package]
-name        = "llmctx-core"
+name        = "genctx-core"
 description = "Shared library: context store, Ollama client, config, extraction, process orchestration"
 version.workspace     = true
 edition.workspace     = true
@@ -18,13 +18,14 @@ tracing     = { workspace = true }
 thiserror   = { workspace = true }
 anyhow      = { workspace = true }
 ignore      = { workspace = true }
+regex       = { workspace = true }
 rusqlite    = { workspace = true }
 url         = { workspace = true }
 getrandom   = { workspace = true }
 
 [dev-dependencies]
 # Used by the config/process unit tests. Previously missing, which made
-# `cargo test -p llmctx-core` fail to compile.
+# `cargo test -p genctx-core` fail to compile.
 tempfile = "3"
 
 [target.'cfg(target_os = "windows")'.dependencies]

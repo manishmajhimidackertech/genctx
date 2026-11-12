@@ -1,20 +1,20 @@
-// <<<LLMCTX
+// <<<GENCTX
 // FILE: crates/core/src/extract.rs
-// ROLE: Detect, validate, and strip <<<LLMCTX comment blocks from LLM-generated source files
-// EXPORTS: ExtractedContext, ExtractError, extract_llmctx_block()
+// ROLE: Detect, validate, and strip <<<GENCTX comment blocks from LLM-generated source files
+// EXPORTS: ExtractedContext, ExtractError, extract_genctx_block()
 // IMPORTS: NONE
 // USED BY: crates/core/src/process.rs
 // NOTES: Only a block at the top of a file counts; never panics or guesses on malformed input; preserves CRLF line endings
-// LLMCTX>>>
+// GENCTX>>>
 
 use thiserror::Error;
 
-const OPEN_DELIMITER: &str = "<<<LLMCTX";
-const CLOSE_DELIMITER: &str = "LLMCTX>>>";
+const OPEN_DELIMITER: &str = "<<<GENCTX";
+const CLOSE_DELIMITER: &str = "GENCTX>>>";
 
 /// Maximum number of lines to scan after the opening delimiter before
 /// giving up looking for the closing delimiter.  Prevents an accidental
-/// `<<<LLMCTX` without a matching close from scanning an entire large file.
+/// `<<<GENCTX` without a matching close from scanning an entire large file.
 const MAX_BLOCK_LINES: usize = 50;
 
 /// How many language-mandated lines (shebang, crate attribute, encoding
@@ -28,10 +28,10 @@ const REQUIRED_FIELDS: &[&str] = &[
 
 #[derive(Debug, Error)]
 pub enum ExtractError {
-    #[error("No <<<LLMCTX delimiter found in source")]
+    #[error("No <<<GENCTX delimiter found in source")]
     NoDelimiter,
 
-    #[error("<<<LLMCTX found but no matching LLMCTX>>> within {MAX_BLOCK_LINES} lines")]
+    #[error("<<<GENCTX found but no matching GENCTX>>> within {MAX_BLOCK_LINES} lines")]
     UnclosedBlock,
 
     #[error("Block is missing required field: {field}")]
@@ -47,7 +47,7 @@ const REQUIRED_FIELDS_LEN: usize = REQUIRED_FIELDS.len();
 #[derive(Debug, Clone)]
 pub struct ExtractedContext {
     /// The six-field body, with comment prefixes stripped.
-    /// Does NOT include the version stamp or project header — process.rs adds those.
+    /// Does NOT include the version stamp or project header - process.rs adds those.
     pub body: String,
 
     /// The source file content with the entire comment block removed,
@@ -57,18 +57,18 @@ pub struct ExtractedContext {
     pub cleaned_source: String,
 }
 
-/// Attempt to find and extract an `<<<LLMCTX … LLMCTX>>>` block from `source`.
+/// Attempt to find and extract an `<<<GENCTX … GENCTX>>>` block from `source`.
 ///
 /// Only a block at the top of the file counts: the opening delimiter must be
 /// the first non-blank line, or follow nothing but language-mandated preamble
 /// (a shebang, a Rust `#![…]` attribute, an encoding cookie, `<?php`, …).
-/// Anything further down — an example in documentation, a test fixture — is
+/// Anything further down - an example in documentation, a test fixture - is
 /// ordinary file content and is never touched.
 ///
 /// On success the caller receives a clean (context, source) pair.
-/// On any error the source is left completely untouched — the caller should
+/// On any error the source is left completely untouched - the caller should
 /// fall through to Ollama generation instead.
-pub fn extract_llmctx_block(source: &str) -> Result<ExtractedContext, ExtractError> {
+pub fn extract_genctx_block(source: &str) -> Result<ExtractedContext, ExtractError> {
     let lines: Vec<&str> = source.lines().collect();
 
     // ── 1. Find the opening delimiter line at the top of the file ────────────
@@ -115,7 +115,7 @@ pub fn extract_llmctx_block(source: &str) -> Result<ExtractedContext, ExtractErr
     //
     // The block occupies lines [open_idx..=close_idx].
     // Also consume one blank line immediately after the closing delimiter
-    // if present — that's the blank line the skill file mandates between
+    // if present - that's the blank line the skill file mandates between
     // the closing delimiter and the first real code line.
     let mut remaining: Vec<&str> = Vec::with_capacity(lines.len());
     let after_close = close_idx + 1;
@@ -129,7 +129,7 @@ pub fn extract_llmctx_block(source: &str) -> Result<ExtractedContext, ExtractErr
         after_close
     };
 
-    // Everything before the block (if any — normally nothing comes before it).
+    // Everything before the block (if any - normally nothing comes before it).
     remaining.extend_from_slice(&lines[..open_idx]);
     // Everything after the blank separator.
     remaining.extend_from_slice(&lines[code_start..]);
@@ -191,13 +191,13 @@ fn is_preamble(line: &str) -> bool {
 
 /// Strip the comment prefix from a single line, returning the remainder.
 ///
-/// Handles the comment styles used in every example in llmctx.md:
+/// Handles the comment styles used in every example in genctx.md:
 ///   `# `, `// `, `/* ` (CSS/C block open), ` * ` (C block continuation),
 ///   `<!-- ` (HTML open), and their variants without a trailing space.
 ///
-/// The delimiter strings (`<<<LLMCTX`, `LLMCTX>>>`) and field names are
+/// The delimiter strings (`<<<GENCTX`, `GENCTX>>>`) and field names are
 /// ASCII-only and don't contain comment characters, so this stripping is
-/// purely cosmetic — even an imperfect strip leaves valid field lines.
+/// purely cosmetic - even an imperfect strip leaves valid field lines.
 pub fn strip_comment_prefix(line: &str) -> &str {
     let trimmed = line.trim_start();
 
@@ -222,14 +222,14 @@ mod tests {
     use super::*;
 
     fn python_block() -> &'static str {
-        r#"# <<<LLMCTX
+        r#"# <<<GENCTX
 # FILE: auth/middleware.py
 # ROLE: JWT verification middleware for protected routes
 # EXPORTS: verify_token(), require_auth
 # IMPORTS: models/user.py, config/settings.py
 # USED BY: routers/orders.py, routers/profile.py
 # NOTES: NONE
-# LLMCTX>>>
+# GENCTX>>>
 
 def verify_token():
     pass
@@ -237,14 +237,14 @@ def verify_token():
     }
 
     fn js_block() -> &'static str {
-        r#"// <<<LLMCTX
+        r#"// <<<GENCTX
 // FILE: utils/formatDate.js
 // ROLE: Formats ISO timestamps for display
 // EXPORTS: formatDate(), formatRelativeTime()
 // IMPORTS: NONE
 // USED BY: components/Timeline.jsx
 // NOTES: Assumes UTC input
-// LLMCTX>>>
+// GENCTX>>>
 
 export function formatDate(iso) {}
 "#
@@ -252,31 +252,31 @@ export function formatDate(iso) {}
 
     #[test]
     fn extracts_python_block() {
-        let result = extract_llmctx_block(python_block()).unwrap();
+        let result = extract_genctx_block(python_block()).unwrap();
         assert!(result.body.contains("FILE: auth/middleware.py"));
         assert!(result.body.contains("ROLE: JWT verification"));
         assert!(result.cleaned_source.contains("def verify_token():"));
-        assert!(!result.cleaned_source.contains("<<<LLMCTX"));
-        assert!(!result.cleaned_source.contains("LLMCTX>>>"));
+        assert!(!result.cleaned_source.contains("<<<GENCTX"));
+        assert!(!result.cleaned_source.contains("GENCTX>>>"));
     }
 
     #[test]
     fn extracts_js_block() {
-        let result = extract_llmctx_block(js_block()).unwrap();
+        let result = extract_genctx_block(js_block()).unwrap();
         assert!(result.body.contains("FILE: utils/formatDate.js"));
         assert!(result.cleaned_source.contains("export function formatDate"));
     }
 
     #[test]
     fn cleaned_source_has_no_leading_blank() {
-        let result = extract_llmctx_block(python_block()).unwrap();
-        // The blank line between LLMCTX>>> and def verify_token should be consumed.
+        let result = extract_genctx_block(python_block()).unwrap();
+        // The blank line between GENCTX>>> and def verify_token should be consumed.
         assert!(!result.cleaned_source.starts_with('\n'));
     }
 
     #[test]
     fn trailing_newline_preserved() {
-        let result = extract_llmctx_block(python_block()).unwrap();
+        let result = extract_genctx_block(python_block()).unwrap();
         assert!(result.cleaned_source.ends_with('\n'));
     }
 
@@ -284,16 +284,16 @@ export function formatDate(iso) {}
     fn no_delimiter_returns_err() {
         let source = "def foo():\n    pass\n";
         assert!(matches!(
-            extract_llmctx_block(source),
+            extract_genctx_block(source),
             Err(ExtractError::NoDelimiter)
         ));
     }
 
     #[test]
     fn unclosed_block_returns_err() {
-        let source = "# <<<LLMCTX\n# FILE: x.py\n# no closing delimiter\n";
+        let source = "# <<<GENCTX\n# FILE: x.py\n# no closing delimiter\n";
         assert!(matches!(
-            extract_llmctx_block(source),
+            extract_genctx_block(source),
             Err(ExtractError::UnclosedBlock)
         ));
     }
@@ -301,18 +301,18 @@ export function formatDate(iso) {}
     #[test]
     fn missing_field_returns_err() {
         // Missing NOTES:
-        let source = r#"# <<<LLMCTX
+        let source = r#"# <<<GENCTX
 # FILE: x.py
 # ROLE: does stuff
 # EXPORTS: foo
 # IMPORTS: NONE
 # USED BY: UNKNOWN
-# LLMCTX>>>
+# GENCTX>>>
 
 pass
 "#;
         assert!(matches!(
-            extract_llmctx_block(source),
+            extract_genctx_block(source),
             Err(ExtractError::MissingField { .. })
         ));
     }
@@ -320,27 +320,27 @@ pass
     #[test]
     fn block_more_than_max_lines_away_from_open() {
         // Closing delimiter is beyond the MAX_BLOCK_LINES window.
-        let mut src = String::from("// <<<LLMCTX\n");
+        let mut src = String::from("// <<<GENCTX\n");
         for i in 0..=MAX_BLOCK_LINES {
             src.push_str(&format!("// line {i}\n"));
         }
-        src.push_str("// LLMCTX>>>\n");
+        src.push_str("// GENCTX>>>\n");
         assert!(matches!(
-            extract_llmctx_block(&src),
+            extract_genctx_block(&src),
             Err(ExtractError::UnclosedBlock)
         ));
     }
 
     #[test]
     fn block_below_other_content_is_ignored() {
-        // Documentation that shows the format (like docs/llmctx.md) must never
+        // Documentation that shows the format (like docs/genctx.md) must never
         // be rewritten: only a block at the very top of a file is a block.
         let doc = format!(
             "# The format\n\nExample:\n\n```python\n{}```\n",
             python_block()
         );
         assert!(matches!(
-            extract_llmctx_block(&doc),
+            extract_genctx_block(&doc),
             Err(ExtractError::NoDelimiter)
         ));
     }
@@ -351,19 +351,19 @@ pass
             "#!/usr/bin/env python3\n# -*- coding: utf-8 -*-\n{}",
             python_block()
         );
-        let result = extract_llmctx_block(&src).unwrap();
+        let result = extract_genctx_block(&src).unwrap();
         assert!(result
             .cleaned_source
             .starts_with("#!/usr/bin/env python3\n# -*- coding: utf-8 -*-\ndef verify_token"));
 
         let rust = format!("#![allow(dead_code)]\n\n{}", js_block());
-        assert!(extract_llmctx_block(&rust).is_ok());
+        assert!(extract_genctx_block(&rust).is_ok());
     }
 
     #[test]
     fn crlf_line_endings_are_preserved() {
         let src = python_block().replace('\n', "\r\n");
-        let result = extract_llmctx_block(&src).unwrap();
+        let result = extract_genctx_block(&src).unwrap();
         assert_eq!(result.cleaned_source, "def verify_token():\r\n    pass\r\n");
     }
 
@@ -371,8 +371,8 @@ pass
     fn strip_comment_prefix_variants() {
         assert_eq!(strip_comment_prefix("# FILE: foo"), "FILE: foo");
         assert_eq!(strip_comment_prefix("// FILE: foo"), "FILE: foo");
-        assert_eq!(strip_comment_prefix("/* <<<LLMCTX"), "<<<LLMCTX");
-        assert_eq!(strip_comment_prefix("<!-- <<<LLMCTX"), "<<<LLMCTX");
+        assert_eq!(strip_comment_prefix("/* <<<GENCTX"), "<<<GENCTX");
+        assert_eq!(strip_comment_prefix("<!-- <<<GENCTX"), "<<<GENCTX");
         assert_eq!(strip_comment_prefix("  # FILE: bar"), "FILE: bar");
     }
 }

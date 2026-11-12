@@ -1,0 +1,222 @@
+/* Code graph webview. Colours come from VS Code's theme variables, with
+   fallbacks for the browser test harness. */
+
+:root {
+  --bg: var(--vscode-editor-background, #1e1e1e);
+  --fg: var(--vscode-editor-foreground, #d4d4d4);
+  --muted: var(--vscode-descriptionForeground, #9d9d9d);
+  --panel: var(--vscode-sideBar-background, #252526);
+  --border: var(--vscode-panel-border, rgba(128, 128, 128, 0.35));
+  --input-bg: var(--vscode-input-background, #3c3c3c);
+  --input-fg: var(--vscode-input-foreground, #cccccc);
+  --input-border: var(--vscode-input-border, transparent);
+  --button-bg: var(--vscode-button-secondaryBackground, #3a3d41);
+  --button-fg: var(--vscode-button-secondaryForeground, #ffffff);
+  --button-hover: var(--vscode-button-secondaryHoverBackground, #45494e);
+  --focus: var(--vscode-focusBorder, #3794ff);
+  --error: var(--vscode-errorForeground, #f48771);
+  --widget-bg: var(--vscode-editorHoverWidget-background, #252526);
+  --widget-border: var(--vscode-editorHoverWidget-border, #454545);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+  background: var(--bg);
+  color: var(--fg);
+  font-family: var(--vscode-font-family, system-ui, sans-serif);
+  font-size: var(--vscode-font-size, 13px);
+}
+
+body {
+  display: flex;
+  flex-direction: column;
+}
+
+#toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 14px;
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--border);
+  background: var(--panel);
+  user-select: none;
+}
+
+#toolbar label {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+#toolbar .spacer {
+  flex: 1;
+}
+
+#search {
+  width: 220px;
+  min-width: 120px;
+  padding: 3px 6px;
+  color: var(--input-fg);
+  background: var(--input-bg);
+  border: 1px solid var(--input-border);
+  border-radius: 2px;
+  font: inherit;
+}
+
+#search:focus,
+select:focus,
+button:focus-visible,
+input[type="checkbox"]:focus-visible,
+input[type="range"]:focus-visible {
+  outline: 1px solid var(--focus);
+  outline-offset: -1px;
+}
+
+select {
+  padding: 2px 4px;
+  color: var(--input-fg);
+  background: var(--input-bg);
+  border: 1px solid var(--input-border);
+  font: inherit;
+}
+
+input[type="range"] {
+  width: 70px;
+}
+
+input[type="range"]:disabled + output,
+input[type="range"]:disabled {
+  opacity: 0.45;
+}
+
+button {
+  padding: 3px 10px;
+  color: var(--button-fg);
+  background: var(--button-bg);
+  border: none;
+  border-radius: 2px;
+  font: inherit;
+  cursor: pointer;
+}
+
+button:hover {
+  background: var(--button-hover);
+}
+
+#stats {
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+#graph {
+  flex: 1;
+  width: 100%;
+  min-height: 0;
+  display: block;
+  touch-action: none;
+}
+
+#legend {
+  position: absolute;
+  left: 10px;
+  bottom: 30px;
+  max-height: 45%;
+  overflow: auto;
+  padding: 6px 8px;
+  background: color-mix(in srgb, var(--panel) 88%, transparent);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  font-size: 11.5px;
+  pointer-events: none;
+}
+
+#legend:empty {
+  display: none;
+}
+
+.legend-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  line-height: 1.6;
+  white-space: nowrap;
+}
+
+.legend-row.muted {
+  color: var(--muted);
+}
+
+.dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  flex: none;
+}
+
+#tooltip {
+  position: fixed;
+  z-index: 10;
+  max-width: 420px;
+  padding: 7px 9px;
+  background: var(--widget-bg);
+  border: 1px solid var(--widget-border);
+  border-radius: 3px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+  pointer-events: none;
+  font-size: 12px;
+}
+
+.tt-title {
+  font-weight: 600;
+  word-break: break-all;
+}
+
+.tt-role {
+  margin-top: 4px;
+}
+
+.tt-meta {
+  margin-top: 4px;
+  color: var(--muted);
+  white-space: pre-line;
+}
+
+#message {
+  position: absolute;
+  top: 45%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  max-width: 80%;
+  padding: 10px 14px;
+  text-align: center;
+  color: var(--muted);
+}
+
+#message.error {
+  color: var(--error);
+}
+
+#help {
+  position: absolute;
+  right: 10px;
+  bottom: 8px;
+  color: var(--muted);
+  font-size: 11px;
+  pointer-events: none;
+  opacity: 0.8;
+}
+
+[hidden] {
+  display: none !important;
+}

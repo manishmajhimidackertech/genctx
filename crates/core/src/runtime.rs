@@ -1,26 +1,26 @@
-// <<<LLMCTX
+// <<<GENCTX
 // FILE: crates/core/src/runtime.rs
-// ROLE: Per-user daemon discovery file (port + auth token) shared by llmctxd and its clients
+// ROLE: Per-user daemon discovery file (port + auth token) shared by genctxd and its clients
 // EXPORTS: DaemonInfo, daemon_file(), read_daemon_info(), write_daemon_info(), remove_daemon_info(), new_token(), tokens_match(), RUNTIME_DIR_ENV
 // IMPORTS: NONE
 // USED BY: crates/daemon/src/main.rs; mirrored by vscode-extension/src/daemon.ts
 // NOTES: The file is private to the user (0700 dir / 0600 file on Unix; %LOCALAPPDATA% on Windows), which is what makes the token a secret
-// LLMCTX>>>
+// GENCTX>>>
 
-//! How clients find and authenticate to `llmctxd`.
+//! How clients find and authenticate to `genctxd`.
 //!
 //! The daemon listens on a port the OS picks (so it never collides with
 //! anything), and writes `{port, token, pid, version}` to a file only the
 //! current user can read. A client must present the token before the daemon
 //! will act on anything it sends, so other users and processes that cannot
-//! read the file cannot drive the daemon — and a client never talks to some
+//! read the file cannot drive the daemon - and a client never talks to some
 //! other program that happens to hold a well-known port.
 //!
 //! Location (the VS Code extension computes the same path):
-//! - `$LLMCTX_RUNTIME_DIR/daemon.json` if set;
-//! - Windows: `%LOCALAPPDATA%\llmctx\daemon.json`;
-//! - elsewhere: `$XDG_RUNTIME_DIR/llmctx/daemon.json`, else
-//!   `~/.cache/llmctx/daemon.json`.
+//! - `$GENCTX_RUNTIME_DIR/daemon.json` if set;
+//! - Windows: `%LOCALAPPDATA%\genctx\daemon.json`;
+//! - elsewhere: `$XDG_RUNTIME_DIR/genctx/daemon.json`, else
+//!   `~/.cache/genctx/daemon.json`.
 
 use std::{
     fs,
@@ -31,7 +31,7 @@ use std::{
 use serde::{Deserialize, Serialize};
 
 /// Overrides the directory holding `daemon.json` (tests, unusual setups).
-pub const RUNTIME_DIR_ENV: &str = "LLMCTX_RUNTIME_DIR";
+pub const RUNTIME_DIR_ENV: &str = "GENCTX_RUNTIME_DIR";
 
 const FILE_NAME: &str = "daemon.json";
 
@@ -56,12 +56,12 @@ pub fn runtime_dir() -> Option<PathBuf> {
         return Some(dir);
     }
     if cfg!(target_os = "windows") {
-        return env("LOCALAPPDATA").map(|d| d.join("llmctx"));
+        return env("LOCALAPPDATA").map(|d| d.join("genctx"));
     }
     if let Some(dir) = env("XDG_RUNTIME_DIR") {
-        return Some(dir.join("llmctx"));
+        return Some(dir.join("genctx"));
     }
-    env("HOME").map(|h| h.join(".cache").join("llmctx"))
+    env("HOME").map(|h| h.join(".cache").join("genctx"))
 }
 
 /// Full path of the discovery file.
@@ -81,7 +81,7 @@ pub fn write_daemon_info(info: &DaemonInfo) -> io::Result<PathBuf> {
     let dir = runtime_dir().ok_or_else(|| {
         io::Error::new(
             io::ErrorKind::NotFound,
-            "no per-user runtime directory (set LLMCTX_RUNTIME_DIR)",
+            "no per-user runtime directory (set GENCTX_RUNTIME_DIR)",
         )
     })?;
     create_private_dir(&dir)?;

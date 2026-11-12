@@ -1,5 +1,5 @@
 [package]
-name        = "llmctx"
+name        = "genctx"
 description = "CLI tool: init, index, pack, reindex, extract"
 version.workspace     = true
 edition.workspace     = true
@@ -8,11 +8,11 @@ license-file.workspace = true
 rust-version.workspace = true
 
 [[bin]]
-name = "llmctx"
+name = "genctx"
 path = "src/main.rs"
 
 [dependencies]
-llmctx-core         = { path = "../core" }
+genctx-core         = { path = "../core" }
 tokio               = { workspace = true }
 clap                = { workspace = true }
 serde               = { workspace = true }

@@ -1,11 +1,11 @@
-// <<<LLMCTX
+// <<<GENCTX
 // FILE: crates/core/src/migrate.rs
-// ROLE: Import context from llmctx 0.1 NTFS Alternate Data Streams into the project store
+// ROLE: Import context from genctx 0.1 NTFS Alternate Data Streams into the project store
 // EXPORTS: import_stream(), ImportOutcome, MigrateError
 // IMPORTS: crates/core/src/ads.rs, crates/core/src/store.rs
-// USED BY: crates/cli/src/main.rs (llmctx migrate)
+// USED BY: crates/cli/src/main.rs (genctx migrate)
 // NOTES: Idempotent; never overwrites context already in the store; only removes a stream once its context is stored
-// LLMCTX>>>
+// GENCTX>>>
 
 use std::path::Path;
 
@@ -27,7 +27,7 @@ pub enum MigrateError {
 /// What happened to one file.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ImportOutcome {
-    /// The file has no (usable) llmctx stream.
+    /// The file has no (usable) genctx stream.
     NoStream,
     /// The stream's context was copied into the store.
     Imported,
@@ -35,12 +35,12 @@ pub enum ImportOutcome {
     AlreadyStored,
 }
 
-/// Copy `path`'s llmctx stream into its project's store. With
+/// Copy `path`'s genctx stream into its project's store. With
 /// `remove_stream`, the stream is deleted once the store holds context for
 /// the file (whether just imported or already there).
 ///
 /// Bodies from before the `HASH:` field get an empty hash, so `pack` serves
-/// them but the next `llmctx index` regenerates them.
+/// them but the next `genctx index` regenerates them.
 pub fn import_stream(
     path: &Path,
     stores: &mut StoreSet,

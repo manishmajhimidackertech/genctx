@@ -293,7 +293,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "clap",
- "llmctx-core",
+ "genctx-core",
  "thiserror 1.0.69",
  "tracing",
  "tracing-subscriber",
@@ -530,6 +530,64 @@ dependencies = [
  "futures-task",
  "pin-project-lite",
  "slab",
+]
+
+[[package]]
+name = "genctx"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "arboard",
+ "async-channel",
+ "clap",
+ "genctx-core",
+ "ignore",
+ "serde",
+ "serde_json",
+ "sha2",
+ "tempfile",
+ "thiserror 1.0.69",
+ "tokio",
+ "tracing",
+ "tracing-subscriber",
+]
+
+[[package]]
+name = "genctx-core"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "getrandom 0.2.17",
+ "ignore",
+ "regex",
+ "reqwest",
+ "rusqlite",
+ "serde",
+ "serde_json",
+ "serde_yaml",
+ "sha2",
+ "tempfile",
+ "thiserror 1.0.69",
+ "tokio",
+ "tracing",
+ "url",
+ "windows",
+]
+
+[[package]]
+name = "genctxd"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "genctx-core",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "sha2",
+ "thiserror 1.0.69",
+ "tokio",
+ "tracing",
+ "tracing-subscriber",
 ]
 
 [[package]]
@@ -941,63 +999,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "47d9d19d1d6efa0109d2f65ff4c85cddd50bd572e5a00127ab10987290bcefae"
 
 [[package]]
-name = "llmctx"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "arboard",
- "async-channel",
- "clap",
- "ignore",
- "llmctx-core",
- "serde",
- "serde_json",
- "sha2",
- "tempfile",
- "thiserror 1.0.69",
- "tokio",
- "tracing",
- "tracing-subscriber",
-]
-
-[[package]]
-name = "llmctx-core"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "getrandom 0.2.17",
- "ignore",
- "reqwest",
- "rusqlite",
- "serde",
- "serde_json",
- "serde_yaml",
- "sha2",
- "tempfile",
- "thiserror 1.0.69",
- "tokio",
- "tracing",
- "url",
- "windows",
-]
-
-[[package]]
-name = "llmctxd"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "llmctx-core",
- "reqwest",
- "serde",
- "serde_json",
- "sha2",
- "thiserror 1.0.69",
- "tokio",
- "tracing",
- "tracing-subscriber",
-]
-
-[[package]]
 name = "lock_api"
 version = "0.4.14"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1371,6 +1372,18 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ed2bf2547551a7053d6fdfafda3f938979645c44812fbfcda098faae3f1a362d"
 dependencies = [
  "bitflags",
+]
+
+[[package]]
+name = "regex"
+version = "1.13.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f020237b6c8eed93db2e2cb53c00c60a8e1bc73da7d073199a1180401450218d"
+dependencies = [
+ "aho-corasick",
+ "memchr",
+ "regex-automata",
+ "regex-syntax",
 ]
 
 [[package]]
