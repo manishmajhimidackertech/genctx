@@ -293,7 +293,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "clap",
- "llmctx-core",
+ "genctx-core",
  "thiserror 1.0.69",
  "tracing",
  "tracing-subscriber",
@@ -530,6 +530,63 @@ dependencies = [
  "futures-task",
  "pin-project-lite",
  "slab",
+]
+
+[[package]]
+name = "genctx"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "arboard",
+ "async-channel",
+ "clap",
+ "genctx-core",
+ "ignore",
+ "serde",
+ "serde_json",
+ "sha2",
+ "tempfile",
+ "thiserror 1.0.69",
+ "tokio",
+ "tracing",
+ "tracing-subscriber",
+]
+
+[[package]]
+name = "genctx-core"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "getrandom 0.2.17",
+ "ignore",
+ "reqwest",
+ "rusqlite",
+ "serde",
+ "serde_json",
+ "serde_yaml",
+ "sha2",
+ "tempfile",
+ "thiserror 1.0.69",
+ "tokio",
+ "tracing",
+ "url",
+ "windows",
+]
+
+[[package]]
+name = "genctxd"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "genctx-core",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "sha2",
+ "thiserror 1.0.69",
+ "tokio",
+ "tracing",
+ "tracing-subscriber",
 ]
 
 [[package]]
@@ -939,63 +996,6 @@ name = "litemap"
 version = "0.8.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "47d9d19d1d6efa0109d2f65ff4c85cddd50bd572e5a00127ab10987290bcefae"
-
-[[package]]
-name = "llmctx"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "arboard",
- "async-channel",
- "clap",
- "ignore",
- "llmctx-core",
- "serde",
- "serde_json",
- "sha2",
- "tempfile",
- "thiserror 1.0.69",
- "tokio",
- "tracing",
- "tracing-subscriber",
-]
-
-[[package]]
-name = "llmctx-core"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "getrandom 0.2.17",
- "ignore",
- "reqwest",
- "rusqlite",
- "serde",
- "serde_json",
- "serde_yaml",
- "sha2",
- "tempfile",
- "thiserror 1.0.69",
- "tokio",
- "tracing",
- "url",
- "windows",
-]
-
-[[package]]
-name = "llmctxd"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "llmctx-core",
- "reqwest",
- "serde",
- "serde_json",
- "sha2",
- "thiserror 1.0.69",
- "tokio",
- "tracing",
- "tracing-subscriber",
-]
 
 [[package]]
 name = "lock_api"

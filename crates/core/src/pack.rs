@@ -1,16 +1,16 @@
-// <<<LLMCTX
+// <<<GENCTX
 // FILE: crates/core/src/pack.rs
 // ROLE: Read-only views of stored context — packed text for an LLM, rendered per-file context, project map, search
 // EXPORTS: pack(), file_context(), project_map(), search(), Packed, FileContext
 // IMPORTS: crates/core/src/store.rs, crates/core/src/config.rs, crates/core/src/process.rs
 // USED BY: crates/cli/src/main.rs (pack, map, mcp)
 // NOTES: Never writes to the store; the project header and USED BY are computed here, at read time
-// LLMCTX>>>
+// GENCTX>>>
 
 //! Everything that turns stored context into text for an LLM.
 //!
 //! Two things are computed here rather than stored, so they are always
-//! current: the project header (from today's `llmcontext.yaml`) and `USED BY`
+//! current: the project header (from today's `gencontext.yaml`) and `USED BY`
 //! (from the other files' `IMPORTS`).
 
 use std::path::Path;
@@ -117,18 +117,20 @@ pub fn pack(path: &Path, with_imports: bool) -> Result<Packed, ProcessError> {
 /// One line per file with stored context — path and ROLE — under the
 /// project header. A compact overview to start an LLM session with.
 pub fn project_map(root: &Path) -> Result<String, ProcessError> {
-    let config = config::load_config(&root.join(config::CONFIG_FILENAME)).unwrap_or_default();
+    let config = config::find_config(root)
+        .and_then(|p| config::load_config(&p))
+        .unwrap_or_default();
     let mut out = format!(
         "=== PROJECT ===\n{}\n=== FILES ===\n",
         config.header_block()
     );
     let Some(store) = ContextStore::open_existing(root)? else {
-        out.push_str("(no stored context yet — run `llmctx index`)\n");
+        out.push_str("(no stored context yet — run `genctx index`)\n");
         return Ok(out);
     };
     let all = store.all()?;
     if all.is_empty() {
-        out.push_str("(no stored context yet — run `llmctx index`)\n");
+        out.push_str("(no stored context yet — run `genctx index`)\n");
     }
     for c in all {
         let role = store::field_value(&c.fields, "ROLE").unwrap_or("?");

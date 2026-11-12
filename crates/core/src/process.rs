@@ -1,11 +1,11 @@
-// <<<LLMCTX
+// <<<GENCTX
 // FILE: crates/core/src/process.rs
 // ROLE: Keystone decision function — ignore check, resume gate, block extraction or Ollama, then write the context store
 // EXPORTS: process_file(), plan(), content_hash(), Plan, ProcessOptions, ProcessResult, ProcessSource, ProcessError
 // IMPORTS: crates/core/src/store.rs, crates/core/src/config.rs, crates/core/src/extract.rs, crates/core/src/ollama.rs, crates/core/src/filter.rs, crates/core/src/fsutil.rs, crates/core/src/git.rs
 // USED BY: crates/daemon/src/main.rs, crates/cli/src/main.rs
 // NOTES: Daemon and CLI must call this function — never reimplement the branch logic themselves
-// LLMCTX>>>
+// GENCTX>>>
 
 use std::path::{Path, PathBuf};
 
@@ -26,9 +26,9 @@ use crate::{
 /// What `process_file()` did.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ProcessSource {
-    /// Context came from an `<<<LLMCTX` block, which was then stripped.
+    /// Context came from an `<<<GENCTX` block, which was then stripped.
     Extracted,
-    /// Context came from an `<<<LLMCTX` block that is committed in git, so
+    /// Context came from an `<<<GENCTX` block that is committed in git, so
     /// it was stored but left in the file (stripping it would dirty the
     /// working tree of everyone who has it).
     ExtractedKept,
@@ -45,10 +45,10 @@ pub enum ProcessSource {
     SkippedTooLarge,
     /// File matched a skip condition (e.g. binary, non-UTF-8).
     SkippedUnreadable,
-    /// File is not inside any project (no llmcontext.yaml, .llmctx/ or .git
+    /// File is not inside any project (no gencontext.yaml, .genctx/ or .git
     /// above it), so there is nowhere to store its context.
     SkippedNoProject,
-    /// File is excluded by .gitignore/.ignore, `llmctx_ignore`, or is hidden.
+    /// File is excluded by .gitignore/.ignore, `genctx_ignore`, or is hidden.
     SkippedIgnored,
 }
 
@@ -65,8 +65,8 @@ impl ProcessSource {
     /// status messages.
     pub fn describe(self) -> &'static str {
         match self {
-            Self::Extracted => "extracted <<<LLMCTX block",
-            Self::ExtractedKept => "stored the committed <<<LLMCTX block (left in the file)",
+            Self::Extracted => "extracted <<<GENCTX block",
+            Self::ExtractedKept => "stored the committed <<<GENCTX block (left in the file)",
             Self::Ollama => "generated via Ollama",
             Self::UpToDate => "already current",
             Self::Reused => "carried over from an identical file",
@@ -74,10 +74,10 @@ impl ProcessSource {
             Self::SkippedTooLarge => "skipped: larger than ollama_max_bytes",
             Self::SkippedUnreadable => "skipped: binary or not UTF-8",
             Self::SkippedNoProject => {
-                "skipped: not inside an llmctx project (run `llmctx init` in the project root)"
+                "skipped: not inside a genctx project (run `genctx init` in the project root)"
             }
             Self::SkippedIgnored => {
-                "skipped: ignored by .gitignore/.ignore, llmctx_ignore, or a hidden path"
+                "skipped: ignored by .gitignore/.ignore, genctx_ignore, or a hidden path"
             }
         }
     }
@@ -86,18 +86,18 @@ impl ProcessSource {
 /// How `process_file()` should behave.
 ///
 /// `Default` is the everyday case: reuse existing context when the file has
-/// not changed, prefer an `<<<LLMCTX` block when one is present.
+/// not changed, prefer an `<<<GENCTX` block when one is present.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct ProcessOptions {
     /// Skip the extraction check and always regenerate via Ollama
-    /// (`llmctx reindex`).
+    /// (`genctx reindex`).
     pub force_ollama: bool,
     /// Process even when the store already holds context for this exact content.
     pub force: bool,
 }
 
 impl ProcessOptions {
-    /// Resume-aware, extraction-first. What `llmctx index` and the daemon use.
+    /// Resume-aware, extraction-first. What `genctx index` and the daemon use.
     pub fn new() -> Self {
         Self::default()
     }
@@ -173,7 +173,7 @@ pub enum Plan {
     UpToDate,
     /// Context will be carried over from identical content elsewhere.
     Reuse,
-    /// An `<<<LLMCTX` block will be extracted.
+    /// An `<<<GENCTX` block will be extracted.
     Extract,
     /// Ollama will be called.
     Generate,
@@ -192,7 +192,7 @@ pub fn plan(path: &Path, opts: ProcessOptions) -> Result<Plan, ProcessError> {
     })
 }
 
-/// Process one file: detect an `<<<LLMCTX` comment block and extract it,
+/// Process one file: detect an `<<<GENCTX` comment block and extract it,
 /// or fall back to Ollama generation, and store the six fields in the
 /// project's context store.
 ///
@@ -250,7 +250,7 @@ pub async fn process_file(
                 store.put(&rel_path, &hash, "llm", &fields)?;
                 info!(
                     ?path,
-                    "<<<LLMCTX block is committed in git — stored, left in file"
+                    "<<<GENCTX block is committed in git — stored, left in file"
                 );
                 return Ok(ProcessResult {
                     source: ProcessSource::ExtractedKept,
@@ -258,7 +258,7 @@ pub async fn process_file(
                 });
             }
 
-            info!(?path, "extracted <<<LLMCTX block — Ollama skipped");
+            info!(?path, "extracted <<<GENCTX block — Ollama skipped");
             // The hash must describe the file as it will exist *after* the
             // block is stripped, since that is what the next run reads.
             let cleaned_hash = content_hash(&extracted.cleaned_source);
@@ -327,23 +327,23 @@ enum Step {
 fn prepare(path: &Path, opts: ProcessOptions) -> Result<Prepared, ProcessError> {
     // ── 1. Project, config and ignore rules ───────────────────────────────────
     // Decided before anything is read or created: a file outside every
-    // project, or one `llmctx index` would skip (.gitignore, llmctx_ignore,
+    // project, or one `genctx index` would skip (.gitignore, genctx_ignore,
     // hidden files like .env), is never read, sent to Ollama or stored —
     // whichever entry point it arrived through.
     let Some(root) = store::project_root_for_file(path) else {
-        debug!(?path, "not inside an llmctx project — skipping");
+        debug!(?path, "not inside a genctx project — skipping");
         return Ok(Prepared::Skip(ProcessSource::SkippedNoProject));
     };
     let config = match config::load_config_for_file(path) {
         Ok((_, config)) => config,
         Err(config::ConfigError::NotFound { .. }) => ProjectConfig::default(),
         Err(e) => {
-            warn!(?path, "could not load llmcontext.yaml, using defaults: {e}");
+            warn!(?path, "could not load gencontext.yaml, using defaults: {e}");
             ProjectConfig::default()
         }
     };
-    if filter::is_ignored(&root, path, &config.llmctx_ignore) {
-        debug!(?path, "ignored by .gitignore/llmctx_ignore — skipping");
+    if filter::is_ignored(&root, path, &config.genctx_ignore) {
+        debug!(?path, "ignored by .gitignore/genctx_ignore — skipping");
         return Ok(Prepared::Skip(ProcessSource::SkippedIgnored));
     }
 
@@ -372,7 +372,7 @@ fn prepare(path: &Path, opts: ProcessOptions) -> Result<Prepared, ProcessError> 
 
     // ── 3. Resume gate ────────────────────────────────────────────────────────
     // If the store already holds context for this exact content there is
-    // nothing to regenerate. This is what makes `llmctx index` resumable: an
+    // nothing to regenerate. This is what makes `genctx index` resumable: an
     // interrupted or partly-failed run picks up where it stopped instead of
     // re-sending every file to Ollama. Identical content stored under another
     // path (a rename, move or copy) is carried over the same way.
@@ -403,7 +403,7 @@ fn prepare(path: &Path, opts: ProcessOptions) -> Result<Prepared, ProcessError> 
 
     // ── 4. Comment-block extraction (unless force_ollama) ─────────────────────
     if !opts.force_ollama {
-        match extract::extract_llmctx_block(&source) {
+        match extract::extract_genctx_block(&source) {
             Ok(extracted) => return Ok(ready(Step::Extract(extracted))),
             Err(ExtractError::NoDelimiter) => {
                 // Normal hand-written file — fall through to Ollama.
@@ -412,7 +412,7 @@ fn prepare(path: &Path, opts: ProcessOptions) -> Result<Prepared, ProcessError> 
                 // Block was found but is malformed.  Log and fall through.
                 warn!(
                     ?path,
-                    "malformed <<<LLMCTX block ({e}) — falling back to Ollama"
+                    "malformed <<<GENCTX block ({e}) — falling back to Ollama"
                 );
             }
         }
@@ -464,11 +464,11 @@ fn skipped(source: ProcessSource) -> ProcessResult {
 }
 
 /// True when the version of `path` committed at HEAD already starts with an
-/// `<<<LLMCTX` block — i.e. the block is part of the repository, not
+/// `<<<GENCTX` block — i.e. the block is part of the repository, not
 /// something an LLM just wrote.
 fn block_is_committed(path: &Path) -> bool {
     git::committed_version(path)
-        .map(|head| extract::extract_llmctx_block(&head).is_ok())
+        .map(|head| extract::extract_genctx_block(&head).is_ok())
         .unwrap_or(false)
 }
 
@@ -538,14 +538,14 @@ mod tests {
 
     // ── process_file against a real store (extraction path, no Ollama) ───────
 
-    const BLOCK_SOURCE: &str = "# <<<LLMCTX
+    const BLOCK_SOURCE: &str = "# <<<GENCTX
 # FILE: wrong/path.py
 # ROLE: Entry point
 # EXPORTS: main()
 # IMPORTS: NONE
 # USED BY: NONE
 # NOTES: NONE
-# LLMCTX>>>
+# GENCTX>>>
 
 def main():
     pass
@@ -576,7 +576,7 @@ def main():
         assert_eq!(r.source, ProcessSource::Extracted);
 
         let cleaned = fs::read_to_string(&file).unwrap();
-        assert!(!cleaned.contains("<<<LLMCTX"));
+        assert!(!cleaned.contains("<<<GENCTX"));
         assert!(dir.path().join(store::STORE_DIR).is_dir());
 
         let ctx = stored(&file).unwrap();

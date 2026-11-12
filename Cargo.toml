@@ -12,7 +12,7 @@ resolver = "3"
 [workspace.package]
 version      = "0.1.0"
 edition      = "2021"
-authors      = ["llmctx"]
+authors      = ["genctx"]
 license-file = "LICENSE"
 rust-version = "1.88"
 
@@ -39,14 +39,14 @@ thiserror    = "1"
 anyhow       = "1"
 # gitignore walking
 ignore       = "0.4"
-# Embedded SQLite for the project context store (.llmctx/context.db).
+# Embedded SQLite for the project context store (.genctx/context.db).
 # `bundled` compiles SQLite in, so users never install it separately.
 rusqlite     = { version = "0.32", features = ["bundled"] }
 # URL parsing for the Ollama host check (already a reqwest dependency).
 url          = "2"
 # OS randomness for the daemon's per-session auth token.
 getrandom    = "0.2"
-# Bounded async channel used by llmctx index for streaming file walker
+# Bounded async channel used by genctx index for streaming file walker
 async-channel = "2"
 # Windows ADS crate is declared in each crate that uses it (crates/core/Cargo.toml)
 # because virtual manifests don't support [target] sections.

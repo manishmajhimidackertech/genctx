@@ -1,13 +1,13 @@
-# llmctx — Context Comment Skill
+# genctx — Context Comment Skill
 
 Use this skill whenever you generate or rewrite a source code file for a project that
-uses llmctx. Triggers: the project contains an `llmcontext.yaml` file, the user mentions
-"llmctx", or you are writing a new source file as part of an ongoing coding task where
+uses genctx. Triggers: the project contains an `gencontext.yaml` file, the user mentions
+"genctx", or you are writing a new source file as part of an ongoing coding task where
 previous files in the conversation already use this format.
 
 ## What this is for
 
-llmctx is a local tool that stores per-file context invisibly (in a hidden `.llmctx/`
+genctx is a local tool that stores per-file context invisibly (in a hidden `.genctx/`
 store at the project root, outside the source files) so any LLM in a future session can instantly understand a file
 without re-explanation. A background daemon normally generates this context after the
 fact using a local model — but when you (the LLM) are the one writing the file, you
@@ -27,18 +27,18 @@ between the delimiters is identical across every language — only the comment p
 changes.
 
 ```
-<<<LLMCTX
+<<<GENCTX
 FILE: <path relative to project root>
 ROLE: <one sentence — what this file does>
 EXPORTS: <key functions/classes/constants this file exposes, comma separated, or NONE>
 IMPORTS: <other project files this depends on, as paths relative to the project root, comma separated, or NONE>
 USED BY: <files likely to import this, comma separated, or UNKNOWN>
 NOTES: <anything unusual a future LLM should know, or NONE>
-LLMCTX>>>
+GENCTX>>>
 ```
 
 **Only these six fields — nothing about the project as a whole, and no version marker.** You
-may see a `PROJECT:`, `TASK:`, `CONVENTIONS:`, or `LLMCTX_VERSION:` line in context blocks
+may see a `PROJECT:`, `TASK:`, `CONVENTIONS:`, or `GENCTX_VERSION:` line in context blocks
 elsewhere in this conversation or in files you read. Do not include any of those fields
 yourself. The local tool adds them
 automatically from the project's own configuration after extracting your block — it
@@ -46,7 +46,7 @@ knows that information more reliably than you do mid-conversation, and duplicati
 here would risk the two going out of sync.
 
 **Rules:**
-- The delimiters `<<<LLMCTX` and `LLMCTX>>>` must appear literally, each on their own line, with no other text on that line besides the comment prefix.
+- The delimiters `<<<GENCTX` and `GENCTX>>>` must appear literally, each on their own line, with no other text on that line besides the comment prefix.
 - Every line between the delimiters must use the same comment prefix as the delimiter lines themselves.
 - Keep ROLE to one sentence. Keep NOTES short — a phrase or two, not a paragraph. This is a lookup aid, not documentation.
 - Always include all six fields, in this order. Use `NONE` or `UNKNOWN` rather than omitting a field.
@@ -60,14 +60,14 @@ here would risk the two going out of sync.
 
 **Python** (`#` prefix):
 ```python
-# <<<LLMCTX
+# <<<GENCTX
 # FILE: auth/middleware.py
 # ROLE: JWT verification middleware for protected routes
 # EXPORTS: verify_token(), require_auth
 # IMPORTS: models/user.py, config/settings.py
 # USED BY: routers/orders.py, routers/profile.py
 # NOTES: NONE
-# LLMCTX>>>
+# GENCTX>>>
 
 def verify_token():
     ...
@@ -75,28 +75,28 @@ def verify_token():
 
 **JavaScript / TypeScript** (`//` prefix):
 ```javascript
-// <<<LLMCTX
+// <<<GENCTX
 // FILE: utils/formatDate.js
 // ROLE: Formats ISO timestamps for display in the UI
 // EXPORTS: formatDate(), formatRelativeTime()
 // IMPORTS: NONE
 // USED BY: components/Timeline.jsx, components/Comment.jsx
 // NOTES: Assumes UTC input, converts to user's local timezone
-// LLMCTX>>>
+// GENCTX>>>
 
 export function formatDate(iso) { ... }
 ```
 
 **Rust** (`//` prefix):
 ```rust
-// <<<LLMCTX
+// <<<GENCTX
 // FILE: crates/core/src/store.rs
-// ROLE: Per-project context store — one SQLite database at <root>/.llmctx/context.db
+// ROLE: Per-project context store — one SQLite database at <root>/.genctx/context.db
 // EXPORTS: ContextStore, StoreError, project_root()
 // IMPORTS: crates/core/src/config.rs
 // USED BY: crates/core/src/process.rs, crates/cli/src/main.rs
 // NOTES: Keys are root-relative paths; content hash is a secondary key for renames
-// LLMCTX>>>
+// GENCTX>>>
 
 pub struct ContextStore { ... }
 ```
@@ -104,28 +104,28 @@ pub struct ContextStore { ... }
 **C-style block comment** (for languages where `//` line comments aren't idiomatic at file
 top, e.g. CSS):
 ```css
-/* <<<LLMCTX
+/* <<<GENCTX
 FILE: styles/buttons.css
 ROLE: Button variants and hover states for the design system
 EXPORTS: .btn, .btn-primary, .btn-secondary, .btn-danger
 IMPORTS: NONE
 USED BY: every component using a button
 NOTES: NONE
-LLMCTX>>> */
+GENCTX>>> */
 
 .btn { ... }
 ```
 
 **HTML** (`<!-- -->`):
 ```html
-<!-- <<<LLMCTX
+<!-- <<<GENCTX
 FILE: templates/email/welcome.html
 ROLE: Welcome email template sent on signup
 EXPORTS: NONE
 IMPORTS: NONE
 USED BY: email/sender.py
 NOTES: Variables use {{ }} Jinja2 syntax, rendered server-side
-LLMCTX>>> -->
+GENCTX>>> -->
 
 <!DOCTYPE html>
 ...
@@ -136,7 +136,7 @@ LLMCTX>>> -->
 This is informational only — you don't need to do anything beyond emitting the block:
 
 1. The user saves the file in VS Code (or the file already exists on disk if generated outside the editor).
-2. The llmctx daemon detects the `<<<LLMCTX` delimiter before considering any other context generation step. This check happens immediately on save — unlike its local-model generation path, extraction isn't delayed or debounced, since it's just a string cut rather than a model call.
+2. The genctx daemon detects the `<<<GENCTX` delimiter before considering any other context generation step. This check happens immediately on save — unlike its local-model generation path, extraction isn't delayed or debounced, since it's just a string cut rather than a model call.
 3. It cuts the block out of the source file entirely — including the comment markers — and writes its contents into the project's hidden context store. Project-level information (name, stack, task, conventions) is added from the project's own configuration file whenever the context is handed to an LLM, so you don't need to know or guess it. The `FILE` field is always set to the file's real path.
 4. The source file that remains on disk is exactly what you'd have written without this skill: no leftover comment, no marker, nothing visible.
 5. The local context-generation step (which would otherwise run a small local model over the file) is skipped for this file, since your context already covers it.
@@ -155,4 +155,4 @@ in the source file and falls back to generating context locally instead, the sam
 you'd written no block at all. This means getting the delimiters exactly right matters:
 a malformed block doesn't just fail quietly, it also leaves a stray comment sitting in
 the user's source file that a human will eventually need to notice and remove. Double-check
-the opening `<<<LLMCTX` and closing `LLMCTX>>>` lines match exactly before moving on.
+the opening `<<<GENCTX` and closing `GENCTX>>>` lines match exactly before moving on.

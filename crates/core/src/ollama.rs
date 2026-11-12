@@ -1,11 +1,11 @@
-// <<<LLMCTX
+// <<<GENCTX
 // FILE: crates/core/src/ollama.rs
 // ROLE: Send a source file to Ollama and return validated six-field context
 // EXPORTS: OllamaClient, OllamaError, GeneratedContext, resolve_ollama_url(), OLLAMA_URL_ENV
 // IMPORTS: crates/core/src/config.rs
 // USED BY: crates/core/src/process.rs, crates/cli/src/main.rs, crates/daemon/src/main.rs
-// NOTES: Repo configs may only point at a local Ollama; LLMCTX_OLLAMA_URL (set by the user) may point anywhere. Output is JSON, validated, retried once
-// LLMCTX>>>
+// NOTES: Repo configs may only point at a local Ollama; GENCTX_OLLAMA_URL (set by the user) may point anywhere. Output is JSON, validated, retried once
+// GENCTX>>>
 
 use std::time::Duration;
 
@@ -16,8 +16,8 @@ use tracing::warn;
 use crate::config::ProjectConfig;
 
 /// Environment variable through which the *user* (not a repository) chooses
-/// the Ollama server. The VS Code extension sets it from `llmctx.ollamaUrl`.
-pub const OLLAMA_URL_ENV: &str = "LLMCTX_OLLAMA_URL";
+/// the Ollama server. The VS Code extension sets it from `genctx.ollamaUrl`.
+pub const OLLAMA_URL_ENV: &str = "GENCTX_OLLAMA_URL";
 
 const DEFAULT_OLLAMA_URL: &str = "http://127.0.0.1:11434";
 
@@ -65,10 +65,10 @@ pub enum OllamaError {
     InvalidOutput { detail: String },
 
     #[error(
-        "refusing to send source to {url}: `ollama_url` in llmcontext.yaml may only point at this \
+        "refusing to send source to {url}: `ollama_url` in gencontext.yaml may only point at this \
          machine (localhost, 127.0.0.1, ::1), because a cloned repository must not decide where \
          your code goes. To use a remote Ollama, set the {OLLAMA_URL_ENV} environment variable \
-         (or `llmctx.ollamaUrl` in VS Code)."
+         (or `genctx.ollamaUrl` in VS Code)."
     )]
     RemoteNotAllowed { url: String },
 
@@ -125,8 +125,8 @@ pub struct GeneratedContext {
 
 /// The Ollama base URL to use for a project.
 ///
-/// `LLMCTX_OLLAMA_URL` wins and may point anywhere: only the user can set
-/// it. `ollama_url` from `llmcontext.yaml` comes from the repository, so it
+/// `GENCTX_OLLAMA_URL` wins and may point anywhere: only the user can set
+/// it. `ollama_url` from `gencontext.yaml` comes from the repository, so it
 /// may only name this machine — otherwise cloning a repository and saving a
 /// file could ship your source code to a server of the repository's choosing.
 pub fn resolve_ollama_url(config: &ProjectConfig) -> Result<String, OllamaError> {
@@ -223,7 +223,7 @@ impl OllamaClient {
 
     /// Ask Ollama for its installed model list.
     ///
-    /// Used as a pre-flight check by `llmctx index` so a stopped server fails
+    /// Used as a pre-flight check by `genctx index` so a stopped server fails
     /// once, immediately, with an accurate message — instead of once per file
     /// after a full timeout each.
     pub async fn list_models(&self, config: &ProjectConfig) -> Result<Vec<String>, OllamaError> {

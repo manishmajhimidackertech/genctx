@@ -1,11 +1,11 @@
-// <<<LLMCTX
+// <<<GENCTX
 // FILE: vscode-extension/src/hash.ts
 // ROLE: Compute SHA-256 hex digest of a string, matching process::content_hash() on the Rust side
 // EXPORTS: contentHash()
 // IMPORTS: NONE
 // USED BY: vscode-extension/src/extension.ts
 // NOTES: Uses Node's built-in crypto — no external deps; must produce identical output to the Rust sha2 impl
-// LLMCTX>>>
+// GENCTX>>>
 
 import { createHash } from "crypto";
 

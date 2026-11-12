@@ -1,20 +1,23 @@
-// <<<LLMCTX
+// <<<GENCTX
 // FILE: crates/core/src/ads.rs
-// ROLE: Legacy reader/writer for the file:llmctx NTFS Alternate Data Stream, kept for `llmctx migrate`
+// ROLE: Legacy reader/writer for the file:genctx NTFS Alternate Data Stream, kept for `genctx migrate`
 // EXPORTS: read_ads(), write_ads(), ads_exists(), clear_ads(), AdsError
 // IMPORTS: NONE
 // USED BY: crates/core/src/migrate.rs, crates/cli/src/main.rs
 // NOTES: Windows/NTFS only — every public function returns Err(AdsError::NotSupported) on non-Windows
-// LLMCTX>>>
+// GENCTX>>>
 
-//! Where llmctx used to keep context before the project store
-//! (`store.rs`) replaced it. Nothing writes here any more; `llmctx migrate`
+//! Where genctx (then named llmctx) used to keep context before the project store
+//! (`store.rs`) replaced it. Nothing writes here any more; `genctx migrate`
 //! reads existing streams into the store and can optionally remove them.
 
 use thiserror::Error;
 
 /// The stream name appended to every source file path.
 /// e.g. `C:\proj\auth\middleware.py:llmctx`
+///
+/// Deliberately still the pre-rename name: these streams were written by
+/// llmctx 0.1, and `genctx migrate` must find them under that name.
 ///
 /// Only referenced from the Windows-only module below, so it reads as dead
 /// code on other targets.
@@ -25,6 +28,7 @@ const STREAM_NAME: &str = "llmctx";
 /// Mismatch on read → treat as missing, regenerate silently.
 pub const ADS_VERSION: u32 = 1;
 #[cfg_attr(not(target_os = "windows"), allow(dead_code))]
+// Pre-rename spelling, as written by llmctx 0.1.
 const VERSION_PREFIX: &str = "LLMCTX_VERSION: ";
 
 #[derive(Debug, Error)]
@@ -92,7 +96,7 @@ pub fn write_ads(path: &std::path::Path, content: &str) -> Result<(), AdsError> 
     }
 }
 
-/// Removes the ADS stream entirely. Used by `llmctx reindex` to force
+/// Removes the ADS stream entirely. Used by `genctx reindex` to force
 /// a clean regeneration without leaving stale data.
 pub fn clear_ads(path: &std::path::Path) -> Result<(), AdsError> {
     #[cfg(target_os = "windows")]

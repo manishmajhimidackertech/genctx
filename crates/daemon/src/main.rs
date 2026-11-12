@@ -1,11 +1,11 @@
-// <<<LLMCTX
+// <<<GENCTX
 // FILE: crates/daemon/src/main.rs
 // ROLE: Background daemon — authenticated local socket for editor saves/renames/deletes; extracts immediately, debounces Ollama
 // EXPORTS: NONE (binary)
 // IMPORTS: crates/core/src/process.rs, crates/core/src/store.rs, crates/core/src/runtime.rs, crates/core/src/ollama.rs, crates/core/src/config.rs
 // USED BY: UNKNOWN
 // NOTES: One process per user; OS-assigned port published with a token in the per-user discovery file; concurrency per Ollama server from config
-// LLMCTX>>>
+// GENCTX>>>
 
 use std::{collections::HashMap, path::PathBuf, sync::Arc, time::Duration};
 
@@ -19,7 +19,7 @@ use tokio::{
 };
 use tracing::{debug, error, info, warn};
 
-use llmctx_core::{
+use genctx_core::{
     config::{self, ProjectConfig},
     ollama::{self, OllamaClient},
     process::{self, Plan, ProcessOptions, ProcessSource},
@@ -38,14 +38,14 @@ const HELLO_TIMEOUT: Duration = Duration::from_secs(10);
 
 /// Set to a port number to listen on a fixed port instead of one the OS
 /// picks. Clients never need it: they read the port from the discovery file.
-const PORT_ENV: &str = "LLMCTX_DAEMON_PORT";
+const PORT_ENV: &str = "GENCTX_DAEMON_PORT";
 
 /// Set to any value to skip the startup update check.
-const NO_UPDATE_CHECK_ENV: &str = "LLMCTX_NO_UPDATE_CHECK";
+const NO_UPDATE_CHECK_ENV: &str = "GENCTX_NO_UPDATE_CHECK";
 
 /// GitHub Releases API endpoint for the update check.
 const RELEASES_URL: &str =
-    "https://api.github.com/repos/manishmajhimidackertech/llmctx/releases/latest";
+    "https://api.github.com/repos/manishmajhimidackertech/genctx/releases/latest";
 
 // ── Socket protocol types (NDJSON) ────────────────────────────────────────────
 
@@ -139,25 +139,25 @@ impl Limits {
 #[tokio::main]
 async fn main() -> Result<()> {
     // No subcommands, so no clap: just the two flags people reach for (the
-    // install docs verify with `llmctxd --version`). Anything else would
+    // install docs verify with `genctxd --version`). Anything else would
     // otherwise silently start a daemon.
     if let Some(arg) = std::env::args().nth(1) {
         match arg.as_str() {
             "-V" | "--version" => {
-                println!("llmctxd {}", env!("CARGO_PKG_VERSION"));
+                println!("genctxd {}", env!("CARGO_PKG_VERSION"));
                 return Ok(());
             }
             "-h" | "--help" => {
                 println!(
-                    "llmctxd {} — llmctx background daemon\n\n\
-                     Usage: llmctxd\n\n\
+                    "genctxd {} — genctx background daemon\n\n\
+                     Usage: genctxd\n\n\
                      Usually started by the VS Code extension. Listens on 127.0.0.1 and\n\
                      publishes its port and token in a per-user discovery file.\n\n\
                      Environment:\n  \
                        {PORT_ENV}=<port>     listen on a fixed port\n  \
                        {NO_UPDATE_CHECK_ENV}=1  skip the startup update check\n  \
-                       LLMCTX_RUNTIME_DIR=<dir>    where to write daemon.json\n  \
-                       LLMCTX_OLLAMA_URL=<url>     Ollama server to use for every project",
+                       GENCTX_RUNTIME_DIR=<dir>    where to write daemon.json\n  \
+                       GENCTX_OLLAMA_URL=<url>     Ollama server to use for every project",
                     env!("CARGO_PKG_VERSION")
                 );
                 return Ok(());
@@ -169,8 +169,8 @@ async fn main() -> Result<()> {
     tracing_subscriber::fmt()
         .with_env_filter(
             tracing_subscriber::EnvFilter::from_default_env()
-                .add_directive("llmctxd=info".parse()?)
-                .add_directive("llmctx_core=info".parse()?),
+                .add_directive("genctxd=info".parse()?)
+                .add_directive("genctx_core=info".parse()?),
         )
         .init();
 
@@ -178,7 +178,7 @@ async fn main() -> Result<()> {
     if let Some(existing) = runtime::read_daemon_info() {
         if is_alive(&existing).await {
             info!(
-                "llmctxd is already running (pid {}, port {}) — nothing to do",
+                "genctxd is already running (pid {}, port {}) — nothing to do",
                 existing.pid, existing.port
             );
             return Ok(());
@@ -203,7 +203,7 @@ async fn main() -> Result<()> {
     };
     let file = runtime::write_daemon_info(&info).context("could not write the discovery file")?;
     info!(
-        "llmctxd listening on 127.0.0.1:{port} (discovery file: {})",
+        "genctxd listening on 127.0.0.1:{port} (discovery file: {})",
         file.display()
     );
 
@@ -483,7 +483,7 @@ async fn forget_save(daemon: &Daemon, path: &PathBuf, hash: &str) {
 
 /// Check GitHub Releases once on startup.  If a newer version exists, broadcasts
 /// an `UpdateAvailable` message to every currently-connected client.
-/// Never self-replaces the running binary. Skipped when LLMCTX_NO_UPDATE_CHECK
+/// Never self-replaces the running binary. Skipped when GENCTX_NO_UPDATE_CHECK
 /// is set.
 async fn check_for_update(daemon: Arc<Daemon>) {
     // Small delay so the first client has time to connect and receive the notice.
@@ -493,7 +493,7 @@ async fn check_for_update(daemon: Arc<Daemon>) {
 
     let http = match reqwest::Client::builder()
         .timeout(Duration::from_secs(10))
-        .user_agent(format!("llmctxd/{current}"))
+        .user_agent(format!("genctxd/{current}"))
         .build()
     {
         Ok(c) => c,

@@ -1,11 +1,11 @@
-// <<<LLMCTX
+// <<<GENCTX
 // FILE: crates/core/src/git.rs
 // ROLE: Minimal read-only git queries (via the git CLI) used to protect committed content
 // EXPORTS: committed_version()
 // IMPORTS: NONE
 // USED BY: crates/core/src/process.rs
 // NOTES: Every failure (no git, not a repo, untracked file) reads as None — callers treat that as "not committed"
-// LLMCTX>>>
+// GENCTX>>>
 
 use std::{path::Path, process::Command};
 

@@ -1,4 +1,4 @@
-# Code Review — llmctx
+# Code Review — genctx
 
 **Second pass 2026-10-02 on branch `cleanup/2026-10-02`: the author's fork
 adopted, one bug fixed, the extension tested. 83 Rust tests and 21 extension
@@ -8,14 +8,14 @@ its checklist is settled, as the table says.
 ## What changed on 2026-10-02
 
 The author forked this project under `manishmajhimidackertech` and made every
-improvement there. The fork, downloaded on 2026-09-28 as `llmctx-forked.zip`,
+improvement there. The fork, downloaded on 2026-09-28 as `genctx-forked.zip`,
 was brought in byte for byte (commit `3178751`), so `git diff 3178751` shows
 only what this pass did. Nothing in the archive copy was missing from the fork.
 
 The fork is a different program from the one reviewed below. Context lives in a
-SQLite store per project at `.llmctx/context.db`, not in NTFS streams, so it
+SQLite store per project at `.genctx/context.db`, not in NTFS streams, so it
 works on any file system and survives zip, sync and git. `ads.rs` survives only
-for `llmctx migrate`. There is an MCP server, a CI workflow on three OSes, and
+for `genctx migrate`. There is an MCP server, a CI workflow on three OSes, and
 81 tests, up from 34.
 
 | 2026-09-04 item | Status, checked in the code |
@@ -25,7 +25,7 @@ for `llmctx migrate`. There is an MCP server, a CI workflow on three OSes, and
 | P2 verify command for lost streams | **Moot.** Streams are no longer the store. |
 | P2 non-interpolating bind error | **Fixed in the fork.** The port is OS-assigned and the error uses `format!`. |
 | P3 document what drops streams | **Moot**, for the same reason. The README's history note covers it. |
-| P3 `authors`, protocol version | `authors = ["llmctx"]` is still a placeholder, left as the author's choice. The welcome message now carries the daemon's version. |
+| P3 `authors`, protocol version | `authors = ["genctx"]` is still a placeholder, left as the author's choice. The welcome message now carries the daemon's version. |
 | `config.rs` unwraps | All in its test module. |
 
 What this pass did, one commit each:
@@ -60,7 +60,7 @@ Rust: 81, 81, 82, 83, 83. Extension: 21 and 21 for the two commits that have
 the suite. `cargo fmt --check` and `clippy -D warnings`, the fork's own CI
 gates, are clean.
 
-`docs/llmctx_tracker.md` stays: the 2026-09-04 review called it a deliberate,
+`docs/genctx_tracker.md` stays: the 2026-09-04 review called it a deliberate,
 living document, and the fork keeps it current.
 
 ## Notes for a future session
@@ -72,7 +72,7 @@ MSYS2's first. Keep `target/` out of the archive with `CARGO_TARGET_DIR`:
 
 ```bash
 export RUSTUP_HOME='D:\dev-tools\rustup' CARGO_HOME='D:\dev-tools\cargo' \
-       CARGO_TARGET_DIR='D:\dev-tools\tmp\llmctx-target' LLMCTX_NO_UPDATE_CHECK=1 \
+       CARGO_TARGET_DIR='D:\dev-tools\tmp\genctx-target' GENCTX_NO_UPDATE_CHECK=1 \
        PATH="/d/dev-tools/cargo/bin:/d/dev-tools/msys64/mingw64/bin:$PATH"
 cargo test --workspace --locked                            # 83
 cargo fmt --all --check && cargo clippy --workspace --all-targets --locked -- -D warnings
@@ -92,7 +92,7 @@ Reviewed 2026-09-04 against the working tree. Scope: workspace `Cargo.toml`, `cr
 
 A Windows tool that stores a per-file LLM context block in an NTFS Alternate Data Stream so it never
 appears in the repository. A VS Code extension notifies a background daemon on save; the daemon
-either extracts an inline `<<<LLMCTX` block or, after a debounce, asks a local Ollama model to
+either extracts an inline `<<<GENCTX` block or, after a debounce, asks a local Ollama model to
 generate one, then writes it to the hidden stream. A CLI packs context plus source to the clipboard,
 and `cpctx` is a copy tool that preserves the streams.
 
@@ -153,7 +153,7 @@ web service, checked into git and checked out again, synced through OneDrive or 
 to a FAT32/exFAT USB stick — and in every one of those cases the loss is **silent**. Nothing warns
 you; the context is simply gone.
 
-Worth adding: a `llmctx doctor` or `llmctx verify` command that walks a project and reports which
+Worth adding: a `genctx doctor` or `genctx verify` command that walks a project and reports which
 files have lost their stream. That turns silent data loss into something you can detect, and it is
 maybe fifty lines given `ads.rs` already exists.
 
@@ -163,7 +163,7 @@ in the docs so a user who restarts the daemon does not wonder why a file never g
 
 ## Smaller notes
 
-- `authors = ["llmctx"]` in the workspace package is a placeholder. Either put your name there or
+- `authors = ["genctx"]` in the workspace package is a placeholder. Either put your name there or
   drop the field.
 - The `.context("failed to bind on any port in range {DAEMON_PORT}–{DAEMON_PORT+PORT_RETRY_COUNT}")`
   at `daemon/src/main.rs:128` uses braces inside a plain string literal, not a format macro — the
@@ -178,7 +178,7 @@ in the docs so a user who restarts the daemon does not wonder why a file never g
 
 ## Cleanup
 
-Very little to do. `docs/llmctx_tracker.md` is a deliberate, documented artifact — the README
+Very little to do. `docs/genctx_tracker.md` is a deliberate, documented artifact — the README
 describes it as the internal dev log to hand to a session resuming work, and it is doing that job.
 Keep it and keep it current. The `println!` usage is confined to the CLI tools where printing is the
 output, and the daemon uses `tracing` properly.
@@ -199,7 +199,7 @@ well-formed.
 ## Notes for a future session
 
 Build with `cargo build --release` from the workspace root; the three binaries land in
-`target/release`. Run the tests with `cargo test --workspace`. Read `docs/llmctx_tracker.md` first —
+`target/release`. Run the tests with `cargo test --workspace`. Read `docs/genctx_tracker.md` first —
 it is the project's own current-state document. The `unsafe` in `crates/core/src/ads.rs` is the only
 place memory safety is on you rather than the compiler; every handle opened there needs its
 `CloseHandle`, so review that file as a unit rather than editing individual calls.

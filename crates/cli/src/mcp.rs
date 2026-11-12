@@ -1,13 +1,13 @@
-// <<<LLMCTX
+// <<<GENCTX
 // FILE: crates/cli/src/mcp.rs
-// ROLE: `llmctx mcp` — Model Context Protocol server over stdio exposing the project's stored context as tools
+// ROLE: `genctx mcp` — Model Context Protocol server over stdio exposing the project's stored context as tools
 // EXPORTS: serve(), Server
 // IMPORTS: crates/core/src/pack.rs, crates/core/src/store.rs, crates/core/src/config.rs
 // USED BY: crates/cli/src/main.rs
 // NOTES: Newline-delimited JSON-RPC 2.0; read-only; paths are confined to the project root
-// LLMCTX>>>
+// GENCTX>>>
 
-//! Lets MCP clients (Claude Code, Claude Desktop, …) read llmctx context
+//! Lets MCP clients (Claude Code, Claude Desktop, …) read genctx context
 //! directly instead of going through the clipboard.
 //!
 //! Tools:
@@ -22,7 +22,7 @@ use std::{
 
 use serde_json::{json, Value};
 
-use llmctx_core::{config, fsutil, pack};
+use genctx_core::{config, fsutil, pack};
 
 /// Protocol versions this server can speak, newest last.
 const SUPPORTED_VERSIONS: &[&str] = &["2024-11-05", "2025-03-26", "2025-06-18"];
@@ -86,9 +86,9 @@ impl Server {
         json!({
             "protocolVersion": version,
             "capabilities": { "tools": {} },
-            "serverInfo": { "name": "llmctx", "version": env!("CARGO_PKG_VERSION") },
+            "serverInfo": { "name": "genctx", "version": env!("CARGO_PKG_VERSION") },
             "instructions": format!(
-                "llmctx keeps a short context summary (role, exports, imports, importers, notes) \
+                "genctx keeps a short context summary (role, exports, imports, importers, notes) \
                  for each file of the project at {}. Call project_map for an overview, \
                  get_file_context before reading or editing an unfamiliar file, and \
                  search_context to find where something lives.",
@@ -134,7 +134,7 @@ impl Server {
                 Ok(text)
             }
             None => Ok(format!(
-                "No stored context for {path} yet. Read the file directly, or run `llmctx index`."
+                "No stored context for {path} yet. Read the file directly, or run `genctx index`."
             )),
         }
     }
@@ -212,7 +212,7 @@ fn error(id: Value, code: i64, message: &str) -> Value {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use llmctx_core::{process::content_hash, store::ContextStore};
+    use genctx_core::{process::content_hash, store::ContextStore};
     use std::fs;
     use tempfile::TempDir;
 
@@ -253,7 +253,7 @@ mod tests {
             .handle(&json!({"jsonrpc":"2.0","id":0,"method":"initialize","params":{"protocolVersion":"2025-03-26"}}))
             .unwrap();
         assert_eq!(reply["result"]["protocolVersion"], "2025-03-26");
-        assert_eq!(reply["result"]["serverInfo"]["name"], "llmctx");
+        assert_eq!(reply["result"]["serverInfo"]["name"], "genctx");
         assert!(server
             .handle(&json!({"jsonrpc":"2.0","method":"notifications/initialized"}))
             .is_none());

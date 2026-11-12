@@ -1,11 +1,11 @@
-// <<<LLMCTX
+// <<<GENCTX
 // FILE: vscode-extension/src/statusBar.ts
-// ROLE: Manage the status bar item that shows per-file llmctx state and triggers pack on click
+// ROLE: Manage the status bar item that shows per-file genctx state and triggers pack on click
 // EXPORTS: StatusBarManager
 // IMPORTS: NONE
 // USED BY: vscode-extension/src/extension.ts
 // NOTES: One shared item; re-rendered on every active-editor change and every daemon status push
-// LLMCTX>>>
+// GENCTX>>>
 
 import * as vscode from "vscode";
 import { StatusState } from "./daemon";
@@ -24,11 +24,11 @@ const ICON: Record<StatusState, string> = {
 };
 
 const TOOLTIP: Record<StatusState, string> = {
-  queued: "llmctx: queued for context generation",
-  generating: "llmctx: generating context via Ollama…",
-  ready: "llmctx: context ready — click to pack to clipboard",
-  skipped: "llmctx: no context is generated for this file",
-  error: "llmctx: context generation failed — click to pack anyway",
+  queued: "genctx: queued for context generation",
+  generating: "genctx: generating context via Ollama…",
+  ready: "genctx: context ready — click to pack to clipboard",
+  skipped: "genctx: no context is generated for this file",
+  error: "genctx: context generation failed — click to pack anyway",
 };
 
 /**
@@ -46,7 +46,7 @@ export class StatusBarManager implements vscode.Disposable {
 
   constructor(alignment: vscode.StatusBarAlignment, priority: number) {
     this.item = vscode.window.createStatusBarItem(alignment, priority);
-    this.item.command = "llmctx.pack";
+    this.item.command = "genctx.pack";
     this.item.show();
     this.render(undefined);
   }
@@ -62,9 +62,9 @@ export class StatusBarManager implements vscode.Disposable {
     // Keep showing last known file state — daemon may reconnect momentarily.
     // Only show the disconnected badge if we've never connected this session.
     if (!this.daemonSeen) {
-      this.item.text = "$(plug) llmctx";
+      this.item.text = "$(plug) genctx";
       this.item.tooltip =
-        "llmctx: daemon not running — it starts automatically if `llmctx.autoStartDaemon` is on; otherwise run llmctxd";
+        "genctx: daemon not running — it starts automatically if `genctx.autoStartDaemon` is on; otherwise run genctxd";
       this.item.backgroundColor = new vscode.ThemeColor(
         "statusBarItem.warningBackground"
       );
@@ -95,8 +95,8 @@ export class StatusBarManager implements vscode.Disposable {
   private render(filePath: string | undefined): void {
     if (!filePath) {
       // No active text editor.
-      this.item.text = "$(database) llmctx";
-      this.item.tooltip = "llmctx: open a file to see its context state";
+      this.item.text = "$(database) genctx";
+      this.item.tooltip = "genctx: open a file to see its context state";
       this.item.backgroundColor = undefined;
       return;
     }
@@ -106,15 +106,15 @@ export class StatusBarManager implements vscode.Disposable {
     if (!fileState) {
       // File hasn't been seen by the daemon yet (e.g. never saved this session,
       // or context already exists from a previous session so no notification was sent).
-      this.item.text = "$(database) llmctx";
+      this.item.text = "$(database) genctx";
       this.item.tooltip =
-        "llmctx: save this file to update its context, or click to pack";
+        "genctx: save this file to update its context, or click to pack";
       this.item.backgroundColor = undefined;
       return;
     }
 
     const { state, message } = fileState;
-    this.item.text = `${ICON[state]} llmctx`;
+    this.item.text = `${ICON[state]} genctx`;
     this.item.tooltip =
       message != null
         ? `${TOOLTIP[state]}\n${message}`

@@ -1,5 +1,5 @@
 [package]
-name        = "llmctxd"
+name        = "genctxd"
 description = "Background daemon: save listener, debounce, bounded Ollama worker pool"
 version.workspace     = true
 edition.workspace     = true
@@ -8,11 +8,11 @@ license-file.workspace = true
 rust-version.workspace = true
 
 [[bin]]
-name = "llmctxd"
+name = "genctxd"
 path = "src/main.rs"
 
 [dependencies]
-llmctx-core         = { path = "../core" }
+genctx-core         = { path = "../core" }
 tokio               = { workspace = true }
 serde               = { workspace = true }
 serde_json          = { workspace = true }

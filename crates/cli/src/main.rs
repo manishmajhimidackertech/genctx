@@ -1,11 +1,11 @@
-// <<<LLMCTX
+// <<<GENCTX
 // FILE: crates/cli/src/main.rs
 // ROLE: CLI binary — init, index, pack, map, reindex, extract, migrate, gc, mcp commands via clap
 // EXPORTS: NONE (binary)
 // IMPORTS: crates/core/src/process.rs, crates/core/src/pack.rs, crates/core/src/store.rs, crates/core/src/migrate.rs, crates/core/src/config.rs, crates/cli/src/mcp.rs
 // USED BY: vscode-extension/src/pack.ts (shells out to pack/map/reindex)
-// NOTES: index respects .gitignore + llmctx_ignore and never descends into .llmctx/; on Linux the clipboard is served by a detached helper so it survives this process
-// LLMCTX>>>
+// NOTES: index respects .gitignore + genctx_ignore and never descends into .genctx/; on Linux the clipboard is served by a detached helper so it survives this process
+// GENCTX>>>
 
 mod mcp;
 
@@ -21,7 +21,7 @@ use ignore::WalkBuilder;
 use tokio::sync::mpsc;
 use tracing::{error, info, warn};
 
-use llmctx_core::{
+use genctx_core::{
     config::{self, ProjectConfig, CONFIG_FILENAME},
     migrate::{self, ImportOutcome},
     ollama::{OllamaClient, OllamaError},
@@ -34,9 +34,9 @@ use llmctx_core::{
 
 #[derive(Parser, Debug)]
 #[command(
-    name = "llmctx",
+    name = "genctx",
     version,
-    about = "llmctx — attach LLM context to your source files"
+    about = "genctx — attach LLM context to your source files"
 )]
 struct Cli {
     #[command(subcommand)]
@@ -45,7 +45,7 @@ struct Cli {
 
 #[derive(Subcommand, Debug)]
 enum Command {
-    /// Write a llmcontext.yaml template in the current directory (non-interactive).
+    /// Write a gencontext.yaml template in the current directory (non-interactive).
     Init,
 
     /// Walk all project files and generate/extract context for each one.
@@ -106,8 +106,8 @@ enum Command {
         force: bool,
     },
 
-    /// Copy context from NTFS Alternate Data Streams (llmctx 0.1) into the
-    /// project's .llmctx store. Windows only; safe to run more than once.
+    /// Copy context from NTFS Alternate Data Streams (genctx 0.1) into the
+    /// project's .genctx store. Windows only; safe to run more than once.
     Migrate {
         /// Directory to migrate (default: current working directory).
         #[arg(default_value = ".")]
@@ -156,8 +156,8 @@ async fn main() -> Result<()> {
         .with_writer(std::io::stderr)
         .with_env_filter(
             tracing_subscriber::EnvFilter::from_default_env()
-                .add_directive(format!("llmctx={default_level}").parse()?)
-                .add_directive(format!("llmctx_core={default_level}").parse()?),
+                .add_directive(format!("genctx={default_level}").parse()?)
+                .add_directive(format!("genctx_core={default_level}").parse()?),
         )
         .init();
 
@@ -195,8 +195,8 @@ fn cmd_init() -> Result<()> {
         return Ok(());
     }
 
-    let template = r##"# llmctx project configuration
-# Edit this file, then run `llmctx index` to generate context for all files.
+    let template = r##"# genctx project configuration
+# Edit this file, then run `genctx index` to generate context for all files.
 
 project: ""  # your project name here
 stack: ""    # e.g. Rust, tokio, serde
@@ -208,15 +208,15 @@ conventions:
 
 # Files to skip in addition to those already excluded by .gitignore.
 # Supports glob patterns relative to this file.
-llmctx_ignore:
+genctx_ignore:
   # - "generated/**"
   # - "vendor/**"
 
 # Ollama settings (defaults shown — remove to use defaults)
 #
 # Only a server on this machine is accepted here, because this file is part
-# of the repository. To use a remote server, set LLMCTX_OLLAMA_URL (or
-# `llmctx.ollamaUrl` in VS Code) instead.
+# of the repository. To use a remote server, set GENCTX_OLLAMA_URL (or
+# `genctx.ollamaUrl` in VS Code) instead.
 # ollama_url: "http://127.0.0.1:11434"
 # ollama_model: "phi3:mini"
 #
@@ -240,7 +240,7 @@ llmctx_ignore:
 "##;
 
     std::fs::write(dest, template).with_context(|| format!("failed to write {CONFIG_FILENAME}"))?;
-    println!("Created {CONFIG_FILENAME} — edit it, then run `llmctx index`.");
+    println!("Created {CONFIG_FILENAME} — edit it, then run `genctx index`.");
     Ok(())
 }
 
@@ -258,34 +258,34 @@ fn load_dir_config(dir: &Path) -> (PathBuf, ProjectConfig) {
 }
 
 /// Walker over the project files under `dir`: honours .gitignore (even
-/// outside a git checkout, like the daemon) and the config's `llmctx_ignore`,
+/// outside a git checkout, like the daemon) and the config's `genctx_ignore`,
 /// and never descends into the context store.
 fn project_walker(dir: &Path, config_path: &Path, config: &ProjectConfig) -> Result<WalkBuilder> {
     let mut walker = WalkBuilder::new(dir);
     walker.standard_filters(true); // honours .gitignore, .git/, hidden files
     walker.require_git(false);
 
-    // Add llmctx_ignore patterns as overrides.
+    // Add genctx_ignore patterns as overrides.
     // `ignore` crate supports adding override globs directly.
     let mut overrides =
         ignore::overrides::OverrideBuilder::new(config_path.parent().unwrap_or(dir));
-    for pattern in &config.llmctx_ignore {
+    for pattern in &config.genctx_ignore {
         // Prefix with `!` to turn them into ignore patterns (OverrideBuilder
         // treats un-prefixed patterns as whitelist; `!` means exclude).
         overrides
             .add(&format!("!{pattern}"))
-            .with_context(|| format!("invalid llmctx_ignore pattern: {pattern}"))?;
+            .with_context(|| format!("invalid genctx_ignore pattern: {pattern}"))?;
     }
     walker.overrides(overrides.build()?);
 
-    // Hidden-file filtering already skips `.llmctx/` on most platforms, but
+    // Hidden-file filtering already skips `.genctx/` on most platforms, but
     // Windows decides "hidden" by attribute — so exclude it explicitly.
     walker.filter_entry(|e| e.file_name() != STORE_DIR);
     Ok(walker)
 }
 
 async fn cmd_index(dir: &Path, client: Arc<OllamaClient>, force: bool) -> Result<()> {
-    // Load config to get llmctx_ignore and concurrency setting.
+    // Load config to get genctx_ignore and concurrency setting.
     let (config_path, config) = load_dir_config(dir);
     let concurrency = config.ollama_concurrency_or_default();
 
@@ -452,7 +452,7 @@ async fn cmd_index(dir: &Path, client: Arc<OllamaClient>, force: bool) -> Result
     }
 
     // Context for files deleted or renamed outside the editor would otherwise
-    // linger until `llmctx gc`; the walk just proved which files exist.
+    // linger until `genctx gc`; the walk just proved which files exist.
     let pruned = prune_under(dir).unwrap_or_else(|e| {
         warn!("could not prune stale context: {e}");
         0
@@ -466,7 +466,7 @@ async fn cmd_index(dir: &Path, client: Arc<OllamaClient>, force: bool) -> Result
     if too_large > 0 {
         println!(
             "  {too_large} file(s) exceeded ollama_max_bytes ({} bytes). Add them to \
-             llmctx_ignore, or raise the limit if your model can handle it.",
+             genctx_ignore, or raise the limit if your model can handle it.",
             config.ollama_max_bytes_or_default()
         );
     }
@@ -474,7 +474,7 @@ async fn cmd_index(dir: &Path, client: Arc<OllamaClient>, force: bool) -> Result
         println!(
             "  {timeouts} file(s) timed out after {}s. Ollama was reachable, just slow — \
              raise ollama_timeout_secs, lower ollama_max_bytes, or use a smaller model. \
-             Re-run `llmctx index` to retry only these.",
+             Re-run `genctx index` to retry only these.",
             config.ollama_timeout_secs_or_default()
         );
     }
@@ -528,10 +528,10 @@ fn cmd_pack(file: &Path, stdout: bool, with_imports: bool) -> Result<()> {
             "warning: no context yet for {} — daemon may still be generating",
             file.display()
         );
-        if matches!(llmctx_core::ads::ads_exists(file), Ok(true)) {
+        if matches!(genctx_core::ads::ads_exists(file), Ok(true)) {
             eprintln!(
-                "hint: this file has context from an older llmctx in an NTFS stream — \
-                 run `llmctx migrate` in the project root to bring it over"
+                "hint: this file has context from an older genctx in an NTFS stream — \
+                 run `genctx migrate` in the project root to bring it over"
             );
         }
     }
@@ -708,7 +708,7 @@ fn cmd_migrate(dir: &Path, remove_streams: bool) -> Result<()> {
 fn cmd_gc(dir: &Path) -> Result<()> {
     let root = store::project_root(dir).with_context(|| {
         format!(
-            "{} is not inside an llmctx project (no {CONFIG_FILENAME}, {STORE_DIR}/ or .git above it)",
+            "{} is not inside a genctx project (no {CONFIG_FILENAME}, {STORE_DIR}/ or .git above it)",
             dir.display()
         )
     })?;
@@ -737,5 +737,5 @@ fn cmd_mcp(root: Option<PathBuf>) -> Result<()> {
         None => std::env::current_dir()?,
     };
     let root = store::project_root(&start).unwrap_or(start);
-    mcp::serve(llmctx_core::fsutil::absolute(&root))
+    mcp::serve(genctx_core::fsutil::absolute(&root))
 }

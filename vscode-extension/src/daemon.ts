@@ -1,11 +1,11 @@
-// <<<LLMCTX
+// <<<GENCTX
 // FILE: vscode-extension/src/daemon.ts
-// ROLE: Client for llmctxd — finds it via the per-user discovery file, authenticates, starts it if needed, sends save/rename/delete events
+// ROLE: Client for genctxd — finds it via the per-user discovery file, authenticates, starts it if needed, sends save/rename/delete events
 // EXPORTS: DaemonClient, daemonFilePath(), StatusMessage, StatusState, UpdateAvailableMessage
 // IMPORTS: NONE
 // USED BY: vscode-extension/src/extension.ts
 // NOTES: Discovery path must match crates/core/src/runtime.rs; pack never depends on this connection
-// LLMCTX>>>
+// GENCTX>>>
 
 import * as net from "net";
 import * as fs from "fs";
@@ -54,21 +54,21 @@ interface DaemonInfo {
 // ── Discovery ────────────────────────────────────────────────────────────────
 
 /**
- * Where llmctxd publishes its port and token. Mirrors `runtime_dir()` in
+ * Where genctxd publishes its port and token. Mirrors `runtime_dir()` in
  * crates/core/src/runtime.rs — keep the two in sync.
  */
 export function daemonFilePath(): string | undefined {
   const env = (k: string): string | undefined => process.env[k] || undefined;
   let dir: string | undefined;
-  if (env("LLMCTX_RUNTIME_DIR")) {
-    dir = env("LLMCTX_RUNTIME_DIR");
+  if (env("GENCTX_RUNTIME_DIR")) {
+    dir = env("GENCTX_RUNTIME_DIR");
   } else if (process.platform === "win32") {
     const local = env("LOCALAPPDATA");
-    dir = local ? path.join(local, "llmctx") : undefined;
+    dir = local ? path.join(local, "genctx") : undefined;
   } else if (env("XDG_RUNTIME_DIR")) {
-    dir = path.join(env("XDG_RUNTIME_DIR") as string, "llmctx");
+    dir = path.join(env("XDG_RUNTIME_DIR") as string, "genctx");
   } else {
-    dir = path.join(os.homedir(), ".cache", "llmctx");
+    dir = path.join(os.homedir(), ".cache", "genctx");
   }
   return dir ? path.join(dir, "daemon.json") : undefined;
 }
@@ -95,23 +95,23 @@ const RECONNECT_MAX_MS = 30_000;
 const RECONNECT_FACTOR = 2;
 
 export interface DaemonOptions {
-  /** Start llmctxd when none is running. */
+  /** Start genctxd when none is running. */
   autoStart: boolean;
-  /** Binary to start; "llmctxd" resolves via PATH. */
+  /** Binary to start; "genctxd" resolves via PATH. */
   daemonPath: string;
-  /** Extra environment for a daemon we start (e.g. LLMCTX_OLLAMA_URL). */
+  /** Extra environment for a daemon we start (e.g. GENCTX_OLLAMA_URL). */
   env: NodeJS.ProcessEnv;
 }
 
 /**
- * One authenticated connection to llmctxd, re-established as needed.
+ * One authenticated connection to genctxd, re-established as needed.
  *
  * Emits:
  *   "status"          (msg: StatusMessage)
  *   "updateAvailable" (msg: UpdateAvailableMessage)
  *   "connect"         ()  — after the daemon accepted our token
  *   "disconnect"      ()
- *   "startFailed"     (err: Error) — auto-start could not launch llmctxd
+ *   "startFailed"     (err: Error) — auto-start could not launch genctxd
  */
 export class DaemonClient extends EventEmitter {
   private socket: net.Socket | null = null;
@@ -231,14 +231,14 @@ export class DaemonClient extends EventEmitter {
     }
   }
 
-  /** Launch a detached llmctxd, at most once per session. */
+  /** Launch a detached genctxd, at most once per session. */
   private startDaemonOnce(): void {
     if (!this.options.autoStart || this.startAttempted) {
       return;
     }
     this.startAttempted = true;
     try {
-      const child = spawn(this.options.daemonPath || "llmctxd", [], {
+      const child = spawn(this.options.daemonPath || "genctxd", [], {
         detached: true,
         stdio: "ignore",
         windowsHide: true,

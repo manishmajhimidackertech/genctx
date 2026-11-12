@@ -1,28 +1,28 @@
-// <<<LLMCTX
+// <<<GENCTX
 // FILE: crates/core/src/store.rs
-// ROLE: Filesystem-independent context store — one SQLite database per project at <root>/.llmctx/context.db
+// ROLE: Filesystem-independent context store — one SQLite database per project at <root>/.genctx/context.db
 // EXPORTS: ContextStore, StoreSet, StoredContext, Lookup, Donor, StoreError, LegacyBody, project_root(), project_root_for_file(), move_context(), forget_context(), field_value(), set_field(), parse_legacy_body(), STORE_DIR, CONTEXT_VERSION
 // IMPORTS: crates/core/src/config.rs, crates/core/src/fsutil.rs
 // USED BY: crates/core/src/process.rs, crates/core/src/pack.rs, crates/core/src/migrate.rs, crates/cli/src/main.rs, crates/cpctx/src/main.rs, crates/daemon/src/main.rs
 // NOTES: Stores only the six per-file fields; the project header is rendered at pack time. Keys are root-relative, `/`-separated, in on-disk case
-// LLMCTX>>>
+// GENCTX>>>
 
-//! llmctx's own storage layer.
+//! genctx's own storage layer.
 //!
 //! Context used to live in an NTFS Alternate Data Stream on each file, which
 //! only exists on Windows/NTFS and is silently dropped by most copy, sync and
 //! archive tools. Instead, every project now owns a single SQLite database in
-//! a hidden `.llmctx/` directory at its root — the same idea as `.git/`. It
+//! a hidden `.genctx/` directory at its root — the same idea as `.git/`. It
 //! behaves identically on NTFS, ext4, APFS, FAT32, exFAT and network shares,
 //! and travels with the project whenever the project folder is copied.
 //!
-//! The directory ignores itself (`.llmctx/.gitignore` contains `*`), so it
+//! The directory ignores itself (`.genctx/.gitignore` contains `*`), so it
 //! never shows up in version control and the user's own `.gitignore` is never
 //! touched.
 //!
 //! Each row holds only the six per-file fields (`FILE:` … `NOTES:`). The
 //! project-level header (PROJECT/TASK/CONVENTIONS) is deliberately *not*
-//! stored: it is rendered from the current `llmcontext.yaml` whenever context
+//! stored: it is rendered from the current `gencontext.yaml` whenever context
 //! is packed, so editing the config takes effect everywhere immediately.
 
 use std::{
@@ -36,14 +36,20 @@ use thiserror::Error;
 
 use crate::{config, fsutil::absolute};
 
-/// Directory at the project root that holds everything llmctx stores.
-pub const STORE_DIR: &str = ".llmctx";
+/// Directory at the project root that holds everything genctx stores.
+pub const STORE_DIR: &str = ".genctx";
+
+/// Where the store lived before the project was renamed from llmctx. A store
+/// found there is moved to [`STORE_DIR`] the first time it is opened; it is
+/// genctx's own, git-ignored directory, so moving it touches nothing of the
+/// user's.
+pub const LEGACY_STORE_DIR: &str = ".llmctx";
 
 const DB_FILENAME: &str = "context.db";
 
-/// Written into `.llmctx/.gitignore` so the store ignores itself.
+/// Written into `.genctx/.gitignore` so the store ignores itself.
 const GITIGNORE_BODY: &str =
-    "# Created by llmctx. Keeps this directory out of version control.\n*\n";
+    "# Created by genctx. Keeps this directory out of version control.\n*\n";
 
 /// Format version of stored field text. Rows stamped with any other version
 /// read as missing, so a format change regenerates silently.
@@ -63,8 +69,8 @@ const BUSY_TIMEOUT: Duration = Duration::from_secs(5);
 #[derive(Debug, Error)]
 pub enum StoreError {
     #[error(
-        "{path} is not inside an llmctx project (no llmcontext.yaml, {STORE_DIR}/ or .git above it) \
-         — run `llmctx init` in the project root"
+        "{path} is not inside a genctx project (no gencontext.yaml, {STORE_DIR}/ or .git above it) \
+         — run `genctx init` in the project root"
     )]
     NoProject { path: String },
 
@@ -86,8 +92,8 @@ pub enum StoreError {
     },
 
     #[error(
-        "context store {path} uses schema {found}, but this llmctx only knows {expected} \
-         — upgrade llmctx"
+        "context store {path} uses schema {found}, but this genctx only knows {expected} \
+         — upgrade genctx"
     )]
     NewerSchema {
         path: String,
@@ -102,9 +108,9 @@ pub struct StoredContext {
     /// Path relative to the project root, `/`-separated on every platform.
     pub rel_path: String,
     /// SHA-256 of the source the context was generated from. Empty when
-    /// unknown (imported from a pre-hash llmctx), which never matches.
+    /// unknown (imported from a pre-hash genctx), which never matches.
     pub content_hash: String,
-    /// Who wrote it: `llm` (an `<<<LLMCTX` block) or `ollama`.
+    /// Who wrote it: `llm` (an `<<<GENCTX` block) or `ollama`.
     pub source: String,
     /// The six field lines, `FILE:` through `NOTES:`.
     pub fields: String,
@@ -137,11 +143,11 @@ pub enum Lookup {
 
 /// Find the project root governing `start_dir`.
 ///
-/// The nearest `llmcontext.yaml` wins, since that file is llmctx's own
+/// The nearest `gencontext.yaml` wins, since that file is genctx's own
 /// project marker. Without one, the nearest directory that already has a
 /// store or is a git checkout is used. `None` means the path is not inside
 /// any project, and nothing should be written for it — the store must never
-/// scatter `.llmctx/` directories next to arbitrary files.
+/// scatter `.genctx/` directories next to arbitrary files.
 pub fn project_root(start_dir: &Path) -> Option<PathBuf> {
     let start = absolute(start_dir);
     if let Ok(config_path) = config::find_config(&start) {
@@ -149,7 +155,11 @@ pub fn project_root(start_dir: &Path) -> Option<PathBuf> {
     }
     start
         .ancestors()
-        .find(|dir| dir.join(STORE_DIR).is_dir() || dir.join(".git").exists())
+        .find(|dir| {
+            dir.join(STORE_DIR).is_dir()
+                || dir.join(LEGACY_STORE_DIR).is_dir()
+                || dir.join(".git").exists()
+        })
         .map(Path::to_path_buf)
 }
 
@@ -173,10 +183,11 @@ pub struct ContextStore {
 }
 
 impl ContextStore {
-    /// Open the store at `root`, creating `.llmctx/` and the database if
+    /// Open the store at `root`, creating `.genctx/` and the database if
     /// they do not exist yet.
     pub fn open(root: &Path) -> Result<Self, StoreError> {
         let root = absolute(root);
+        adopt_legacy_store_dir(&root);
         let dir = root.join(STORE_DIR);
         let created = prepare_store_dir(&dir)?;
         let store = Self::connect(root, dir.join(DB_FILENAME))?;
@@ -192,6 +203,7 @@ impl ContextStore {
     /// commands so that looking for context never creates a store.
     pub fn open_existing(root: &Path) -> Result<Option<Self>, StoreError> {
         let root = absolute(root);
+        adopt_legacy_store_dir(&root);
         let db_path = root.join(STORE_DIR).join(DB_FILENAME);
         if !db_path.is_file() {
             return Ok(None);
@@ -763,7 +775,7 @@ pub fn forget_context(path: &Path) -> Result<usize, StoreError> {
 // ── StoreSet ─────────────────────────────────────────────────────────────────
 
 /// Open stores keyed by project root, for commands that touch many files
-/// (`cpctx copy`, `llmctx migrate`) and should not reopen a database per file.
+/// (`cpctx copy`, `genctx migrate`) and should not reopen a database per file.
 #[derive(Default)]
 pub struct StoreSet {
     stores: HashMap<PathBuf, ContextStore>,
@@ -859,7 +871,7 @@ fn split_paths(value: &str) -> Vec<String> {
         .collect()
 }
 
-/// A context body in the llmctx 0.1 format (NTFS streams, and store schema
+/// A context body in the genctx 0.1 format (NTFS streams, and store schema
 /// v1): project header, `SOURCE:`, `HASH:`, a blank line, then the fields.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct LegacyBody {
@@ -885,7 +897,7 @@ pub fn parse_legacy_body(body: &str) -> LegacyBody {
             .filter(|l| {
                 let t = l.trim_start();
                 ![
-                    "LLMCTX_VERSION:",
+                    "LLMCTX_VERSION:", // written by llmctx 0.1, before the rename
                     "PROJECT:",
                     "TASK:",
                     "CONVENTIONS:",
@@ -910,7 +922,7 @@ pub fn parse_legacy_body(body: &str) -> LegacyBody {
 
 // ── Private helpers ──────────────────────────────────────────────────────────
 
-/// Create `.llmctx/` if needed and make sure it still ignores itself.
+/// Create `.genctx/` if needed and make sure it still ignores itself.
 /// Returns whether the directory was created.
 fn prepare_store_dir(dir: &Path) -> Result<bool, StoreError> {
     let io_err = |path: &Path| {
@@ -932,8 +944,23 @@ fn prepare_store_dir(dir: &Path) -> Result<bool, StoreError> {
     Ok(created)
 }
 
+/// Move a pre-rename `.llmctx/` store to `.genctx/`, once. Best effort: if
+/// the move fails (another process got there first, or permissions), the
+/// store is simply rebuilt by the next `genctx index`.
+fn adopt_legacy_store_dir(root: &Path) {
+    let legacy = root.join(LEGACY_STORE_DIR);
+    let current = root.join(STORE_DIR);
+    if !legacy.is_dir() || current.exists() {
+        return;
+    }
+    if std::fs::rename(&legacy, &current).is_ok() {
+        // The old self-ignore file names the old tool; refresh it.
+        let _ = std::fs::write(current.join(".gitignore"), GITIGNORE_BODY);
+    }
+}
+
 /// Windows does not treat dot-directories as hidden, so set the attribute.
-/// Best effort: a visible `.llmctx` is cosmetic, not an error.
+/// Best effort: a visible `.genctx` is cosmetic, not an error.
 #[cfg(target_os = "windows")]
 fn hide_dir(dir: &Path) {
     use windows::{
@@ -1013,6 +1040,21 @@ mod tests {
         assert!(store.db_path().is_file());
         let ignore = fs::read_to_string(dir.path().join(STORE_DIR).join(".gitignore")).unwrap();
         assert!(ignore.lines().any(|l| l == "*"));
+    }
+
+    #[test]
+    fn legacy_store_dir_is_moved_on_open() {
+        let (dir, _) = project();
+        ContextStore::open(dir.path())
+            .unwrap()
+            .put("a.rs", "h", "llm", "b")
+            .unwrap();
+        fs::rename(dir.path().join(STORE_DIR), dir.path().join(LEGACY_STORE_DIR)).unwrap();
+
+        let store = ContextStore::open_existing(dir.path()).unwrap().unwrap();
+        assert_eq!(store.get("a.rs").unwrap().unwrap().fields, "b");
+        assert!(dir.path().join(STORE_DIR).is_dir());
+        assert!(!dir.path().join(LEGACY_STORE_DIR).exists());
     }
 
     #[test]

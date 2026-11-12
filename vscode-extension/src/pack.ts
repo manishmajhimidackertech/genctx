@@ -1,11 +1,11 @@
-// <<<LLMCTX
+// <<<GENCTX
 // FILE: vscode-extension/src/pack.ts
-// ROLE: Shell out to the llmctx CLI for pack/map/reindex and put results on the clipboard via VS Code
+// ROLE: Shell out to the genctx CLI for pack/map/reindex and put results on the clipboard via VS Code
 // EXPORTS: packFile(), copyProjectMap(), reindexFile(), verifyCliOnPath(), cliEnv()
 // IMPORTS: NONE
 // USED BY: vscode-extension/src/extension.ts
 // NOTES: The CLI prints (`--stdout`); the extension writes the clipboard, which works on every OS
-// LLMCTX>>>
+// GENCTX>>>
 
 import * as vscode from "vscode";
 import * as fs from "fs";
@@ -17,33 +17,33 @@ const execFileAsync = promisify(execFile);
 // ── CLI binary resolution ─────────────────────────────────────────────────────
 
 /**
- * Locate the `llmctx` binary.
+ * Locate the `genctx` binary.
  *
  * Resolution order:
- *   1. `llmctx.cliPath` VS Code setting (allows the user to override).
- *   2. `llmctx` on the system PATH (standard install via `cpctx setup`).
+ *   1. `genctx.cliPath` VS Code setting (allows the user to override).
+ *   2. `genctx` on the system PATH (standard install via `cpctx setup`).
  *
  * Returns the resolved path string, or throws with a human-readable message
  * that includes setup instructions if the binary cannot be found.
  */
 function resolveCliBinary(): string {
-  const config = vscode.workspace.getConfiguration("llmctx");
+  const config = vscode.workspace.getConfiguration("genctx");
   const override = config.get<string>("cliPath", "").trim();
   if (override) {
     if (!fs.existsSync(override)) {
       throw new Error(
-        `llmctx.cliPath is set to "${override}" but no file exists there. ` +
+        `genctx.cliPath is set to "${override}" but no file exists there. ` +
           `Update the setting or remove it to use PATH resolution.`
       );
     }
     return override;
   }
   // Fall back to plain name — execFile will search PATH.
-  return "llmctx";
+  return "genctx";
 }
 
 /**
- * Check whether the `llmctx` binary is reachable and show a one-time
+ * Check whether the `genctx` binary is reachable and show a one-time
  * actionable error if not.  Call this from `activate()` so the user
  * finds out immediately, not only when they first try to pack.
  */
@@ -57,8 +57,8 @@ export async function verifyCliOnPath(): Promise<void> {
       (err.message.includes("ENOENT") || err.message.includes("not found"));
 
     const msg = isNotFound
-      ? "llmctx binary not found on PATH. Build it with `cargo build --release -p llmctx` then run `cpctx setup` to register it."
-      : `llmctx binary check failed: ${err instanceof Error ? err.message : String(err)}`;
+      ? "genctx binary not found on PATH. Build it with `cargo build --release -p genctx` then run `cpctx setup` to register it."
+      : `genctx binary check failed: ${err instanceof Error ? err.message : String(err)}`;
 
     void vscode.window
       .showErrorMessage(msg, "Open README")
@@ -66,7 +66,7 @@ export async function verifyCliOnPath(): Promise<void> {
         if (choice === "Open README") {
           void vscode.env.openExternal(
             vscode.Uri.parse(
-              "https://github.com/manishmajhimidackertech/llmctx#installation"
+              "https://github.com/manishmajhimidackertech/genctx#installation"
             )
           );
         }
@@ -80,12 +80,12 @@ export async function verifyCliOnPath(): Promise<void> {
 const MAX_OUTPUT_BYTES = 64 * 1024 * 1024;
 
 /**
- * Environment for CLI calls: the user's `llmctx.ollamaUrl`, if set, is passed
- * as LLMCTX_OLLAMA_URL — the only way to point llmctx at a remote Ollama.
+ * Environment for CLI calls: the user's `genctx.ollamaUrl`, if set, is passed
+ * as GENCTX_OLLAMA_URL — the only way to point genctx at a remote Ollama.
  */
 export function cliEnv(): NodeJS.ProcessEnv {
-  const url = vscode.workspace.getConfiguration("llmctx").get<string>("ollamaUrl", "").trim();
-  return url ? { ...process.env, LLMCTX_OLLAMA_URL: url } : process.env;
+  const url = vscode.workspace.getConfiguration("genctx").get<string>("ollamaUrl", "").trim();
+  return url ? { ...process.env, GENCTX_OLLAMA_URL: url } : process.env;
 }
 
 /**
@@ -99,7 +99,7 @@ export function cliEnv(): NodeJS.ProcessEnv {
  */
 export async function packFile(filePath: string, withImports = false): Promise<void> {
   await vscode.window.withProgress(
-    { location: vscode.ProgressLocation.Window, title: "llmctx: packing…" },
+    { location: vscode.ProgressLocation.Window, title: "genctx: packing…" },
     async () => {
       try {
         const bin = resolveCliBinary();
@@ -115,11 +115,11 @@ export async function packFile(filePath: string, withImports = false): Promise<v
         await vscode.env.clipboard.writeText(stdout);
         if (stdout.includes("[no context yet")) {
           void vscode.window.showWarningMessage(
-            "llmctx: packed to clipboard, but this file has no context yet — save it, or run `llmctx index`"
+            "genctx: packed to clipboard, but this file has no context yet — save it, or run `genctx index`"
           );
         } else {
           void vscode.window.showInformationMessage(
-            "llmctx: packed to clipboard — paste into any LLM"
+            "genctx: packed to clipboard — paste into any LLM"
           );
         }
       } catch (err: unknown) {
@@ -139,7 +139,7 @@ export async function copyProjectMap(folder: string): Promise<void> {
       maxBuffer: MAX_OUTPUT_BYTES,
     });
     await vscode.env.clipboard.writeText(stdout);
-    void vscode.window.showInformationMessage("llmctx: project map copied to clipboard");
+    void vscode.window.showInformationMessage("genctx: project map copied to clipboard");
   } catch (err: unknown) {
     handleCliError(err, "map");
   }
@@ -152,7 +152,7 @@ export async function copyProjectMap(folder: string): Promise<void> {
  */
 export async function reindexFile(filePath: string): Promise<void> {
   await vscode.window.withProgress(
-    { location: vscode.ProgressLocation.Window, title: "llmctx: reindexing…" },
+    { location: vscode.ProgressLocation.Window, title: "genctx: reindexing…" },
     async () => {
       try {
         const bin = resolveCliBinary();
@@ -160,7 +160,7 @@ export async function reindexFile(filePath: string): Promise<void> {
           env: cliEnv(),
           timeout: 600_000,
         });
-        void vscode.window.showInformationMessage(`llmctx: ${stdout.trim()}`);
+        void vscode.window.showInformationMessage(`genctx: ${stdout.trim()}`);
       } catch (err: unknown) {
         handleCliError(err, "reindex");
       }
@@ -172,7 +172,7 @@ export async function reindexFile(filePath: string): Promise<void> {
 
 function handleCliError(err: unknown, command: string): void {
   if (!(err instanceof Error)) {
-    void vscode.window.showErrorMessage(`llmctx ${command} failed: ${String(err)}`);
+    void vscode.window.showErrorMessage(`genctx ${command} failed: ${String(err)}`);
     return;
   }
 
@@ -182,19 +182,19 @@ function handleCliError(err: unknown, command: string): void {
   if (isNotFound) {
     void vscode.window
       .showErrorMessage(
-        "llmctx binary not found. Run `cargo build --release -p llmctx` then `cpctx setup`.",
+        "genctx binary not found. Run `cargo build --release -p genctx` then `cpctx setup`.",
         "Open README"
       )
       .then((choice) => {
         if (choice === "Open README") {
           void vscode.env.openExternal(
-            vscode.Uri.parse("https://github.com/manishmajhimidackertech/llmctx#installation")
+            vscode.Uri.parse("https://github.com/manishmajhimidackertech/genctx#installation")
           );
         }
       });
   } else {
     void vscode.window.showErrorMessage(
-      `llmctx ${command} failed: ${err.message}`
+      `genctx ${command} failed: ${err.message}`
     );
   }
 }

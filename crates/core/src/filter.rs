@@ -1,13 +1,13 @@
-// <<<LLMCTX
+// <<<GENCTX
 // FILE: crates/core/src/filter.rs
-// ROLE: Decide whether a single file is excluded by .gitignore/.ignore, hidden paths or llmctx_ignore
+// ROLE: Decide whether a single file is excluded by .gitignore/.ignore, hidden paths or genctx_ignore
 // EXPORTS: is_ignored()
 // IMPORTS: crates/core/src/fsutil.rs
 // USED BY: crates/core/src/process.rs
-// NOTES: Mirrors what `llmctx index`'s walker skips, so the daemon (one file at a time) and index agree
-// LLMCTX>>>
+// NOTES: Mirrors what `genctx index`'s walker skips, so the daemon (one file at a time) and index agree
+// GENCTX>>>
 
-//! One-file version of the rules `llmctx index` applies while walking.
+//! One-file version of the rules `genctx index` applies while walking.
 //!
 //! The walker prunes whole directories as it goes; the daemon only ever sees
 //! single saved files, so it needs the same answer for one path. Both now go
@@ -31,14 +31,14 @@ const IGNORE_FILES: &[&str] = &[".ignore", ".gitignore"];
 /// True when `path` must not be processed:
 ///
 /// - any path component below `root` is hidden (starts with `.`), which also
-///   covers `.git/`, `.env` and the `.llmctx/` store itself;
-/// - it matches an `llmctx_ignore` pattern (relative to `root`);
+///   covers `.git/`, `.env` and the `.genctx/` store itself;
+/// - it matches an `genctx_ignore` pattern (relative to `root`);
 /// - it is ignored by a `.ignore`/`.gitignore` between it and the repository
 ///   root, by `.git/info/exclude`, or by git's global excludes file.
 ///
 /// `.gitignore` files are honoured even outside a git checkout, matching
-/// `llmctx index`. Paths outside `root` are never reported as ignored.
-pub fn is_ignored(root: &Path, path: &Path, llmctx_ignore: &[String]) -> bool {
+/// `genctx index`. Paths outside `root` are never reported as ignored.
+pub fn is_ignored(root: &Path, path: &Path, genctx_ignore: &[String]) -> bool {
     let path = absolute(path);
     let root = absolute(root);
     let Ok(rel) = path.strip_prefix(&root) else {
@@ -53,12 +53,12 @@ pub fn is_ignored(root: &Path, path: &Path, llmctx_ignore: &[String]) -> bool {
         return true;
     }
 
-    // ── llmctx_ignore ────────────────────────────────────────────────────
-    if !llmctx_ignore.is_empty() {
+    // ── genctx_ignore ────────────────────────────────────────────────────
+    if !genctx_ignore.is_empty() {
         let mut builder = OverrideBuilder::new(&root);
-        for pattern in llmctx_ignore {
+        for pattern in genctx_ignore {
             if let Err(e) = builder.add(&format!("!{pattern}")) {
-                warn!("invalid llmctx_ignore pattern {pattern:?}: {e}");
+                warn!("invalid genctx_ignore pattern {pattern:?}: {e}");
             }
         }
         if let Ok(overrides) = builder.build() {
@@ -158,7 +158,7 @@ mod tests {
         let root = dir.path();
         assert!(is_ignored(root, &touch(root, ".env"), &[]));
         assert!(is_ignored(root, &touch(root, ".github/ci.yml"), &[]));
-        assert!(is_ignored(root, &touch(root, ".llmctx/context.db"), &[]));
+        assert!(is_ignored(root, &touch(root, ".genctx/context.db"), &[]));
         assert!(!is_ignored(root, &touch(root, "src/main.rs"), &[]));
     }
 
@@ -192,7 +192,7 @@ mod tests {
     }
 
     #[test]
-    fn llmctx_ignore_patterns_apply_to_files_and_directories() {
+    fn genctx_ignore_patterns_apply_to_files_and_directories() {
         let dir = TempDir::new().unwrap();
         let root = dir.path();
         let patterns = vec![

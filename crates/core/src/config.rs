@@ -1,18 +1,23 @@
-// <<<LLMCTX
+// <<<GENCTX
 // FILE: crates/core/src/config.rs
-// ROLE: Parse llmcontext.yaml and resolve it per-file by walking up the directory tree
+// ROLE: Parse gencontext.yaml and resolve it per-file by walking up the directory tree
 // EXPORTS: ProjectConfig, ConfigError, find_config(), load_config(), load_config_for_file(), CONFIG_FILENAME
 // IMPORTS: NONE
 // USED BY: crates/core/src/process.rs, crates/cli/src/main.rs
 // NOTES: Resolution mirrors .gitignore semantics — nearest ancestor wins; no global state
-// LLMCTX>>>
+// GENCTX>>>
 
 use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
-pub const CONFIG_FILENAME: &str = "llmcontext.yaml";
+pub const CONFIG_FILENAME: &str = "gencontext.yaml";
+
+/// The config's name before the project was renamed from llmctx to genctx.
+/// Still read (never written), so existing projects keep working; when both
+/// exist in one directory, [`CONFIG_FILENAME`] wins.
+pub const LEGACY_CONFIG_FILENAME: &str = "llmcontext.yaml";
 
 #[derive(Debug, Error)]
 pub enum ConfigError {
@@ -34,7 +39,7 @@ pub enum ConfigError {
     },
 }
 
-/// Deserialised representation of `llmcontext.yaml`.
+/// Deserialised representation of `gencontext.yaml`.
 ///
 /// All fields are optional so a minimal config (just `project:`) is valid.
 /// The daemon and CLI fill in blanks with empty strings when building
@@ -56,14 +61,14 @@ pub struct ProjectConfig {
 
     /// Additional glob patterns (relative to the config file) for files
     /// that .gitignore wouldn't already exclude but should be skipped.
-    #[serde(default)]
-    pub llmctx_ignore: Vec<String>,
+    #[serde(default, alias = "llmctx_ignore")]
+    pub genctx_ignore: Vec<String>,
 
     /// Ollama base URL; defaults to http://127.0.0.1:11434 if absent.
     ///
     /// Because this file lives in the repository, only a URL on this machine
     /// is honoured (see `ollama::resolve_ollama_url`). A remote server has to
-    /// be chosen by the user through `LLMCTX_OLLAMA_URL`.
+    /// be chosen by the user through `GENCTX_OLLAMA_URL`.
     pub ollama_url: Option<String>,
 
     /// Ollama model to use; defaults to "phi3:mini" if absent.
@@ -138,7 +143,7 @@ impl ProjectConfig {
     }
 }
 
-/// Walk up from `start_dir` (inclusive) looking for `llmcontext.yaml`.
+/// Walk up from `start_dir` (inclusive) looking for `gencontext.yaml`.
 /// Returns the path of the first one found, or `ConfigError::NotFound`.
 ///
 /// This mirrors the way `.gitignore` resolution works — each file is
@@ -146,9 +151,11 @@ impl ProjectConfig {
 pub fn find_config(start_dir: &Path) -> Result<PathBuf, ConfigError> {
     let mut dir = start_dir.to_path_buf();
     loop {
-        let candidate = dir.join(CONFIG_FILENAME);
-        if candidate.is_file() {
-            return Ok(candidate);
+        for name in [CONFIG_FILENAME, LEGACY_CONFIG_FILENAME] {
+            let candidate = dir.join(name);
+            if candidate.is_file() {
+                return Ok(candidate);
+            }
         }
         if !dir.pop() {
             break;
@@ -167,7 +174,7 @@ pub fn load_config_for_file(file_path: &Path) -> Result<(PathBuf, ProjectConfig)
     Ok((config_path, config))
 }
 
-/// Parse `llmcontext.yaml` at the given path.
+/// Parse `gencontext.yaml` at the given path.
 pub fn load_config(path: &Path) -> Result<ProjectConfig, ConfigError> {
     let text = std::fs::read_to_string(path).map_err(|e| ConfigError::Io {
         path: path.display().to_string(),
@@ -213,6 +220,27 @@ mod tests {
     }
 
     #[test]
+    fn legacy_config_name_is_still_read() {
+        let dir = TempDir::new().unwrap();
+        fs::write(
+            dir.path().join(LEGACY_CONFIG_FILENAME),
+            "project: Old\nllmctx_ignore: [\"gen/**\"]\n",
+        )
+        .unwrap();
+        let found = find_config(dir.path()).unwrap();
+        assert_eq!(found, dir.path().join(LEGACY_CONFIG_FILENAME));
+        let cfg = load_config(&found).unwrap();
+        assert_eq!(cfg.genctx_ignore, vec!["gen/**".to_string()]);
+
+        // The new name wins when both are present.
+        write_config(dir.path(), "project: New\n");
+        assert_eq!(
+            find_config(dir.path()).unwrap(),
+            dir.path().join(CONFIG_FILENAME)
+        );
+    }
+
+    #[test]
     fn walks_up_to_ancestor() {
         let root = TempDir::new().unwrap();
         write_config(root.path(), "project: Root\n");
@@ -234,7 +262,7 @@ task: "Build core crate"
 conventions:
   - "No unwrap in library code"
   - "Errors via thiserror"
-llmctx_ignore:
+genctx_ignore:
   - "generated/**"
 ollama_model: codellama:7b
 ollama_concurrency: 4
@@ -245,7 +273,7 @@ ollama_concurrency: 4
         assert_eq!(cfg.ollama_model_or_default(), "codellama:7b");
         assert_eq!(cfg.ollama_concurrency_or_default(), 4);
         assert_eq!(cfg.conventions.len(), 2);
-        assert_eq!(cfg.llmctx_ignore, vec!["generated/**"]);
+        assert_eq!(cfg.genctx_ignore, vec!["generated/**"]);
     }
 
     #[test]
@@ -261,7 +289,7 @@ ollama_concurrency: 4
 
     #[test]
     fn concurrency_never_resolves_to_zero() {
-        // A zero here would deadlock `llmctx index` (no workers spawned), so
+        // A zero here would deadlock `genctx index` (no workers spawned), so
         // it is clamped rather than trusted.
         let cfg = ProjectConfig {
             ollama_concurrency: Some(0),

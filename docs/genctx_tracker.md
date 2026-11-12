@@ -1,4 +1,4 @@
-# llmctx — Project Tracker
+# genctx — Project Tracker
 
 > Upload this file to any Claude session to continue exactly where we left off.
 
@@ -8,11 +8,11 @@
 
 A developer tool that eliminates the need to re-explain your codebase every time you start a new LLM chat session.
 
-**Core idea:** Attach LLM context invisibly to each source file, kept in llmctx's own per-project store: one SQLite database at `<project root>/.llmctx/context.db`, which works on any file system. Context is generated automatically on every save by a local Ollama model running in the background. When you want to send a file to any LLM, click the llmctx button in the VS Code status bar. It reads the stored context and the source, merges them into one plain text block, and copies it to the clipboard. You paste into any LLM. Zero terminal, zero commands, zero re-explaining.
+**Core idea:** Attach LLM context invisibly to each source file, kept in genctx's own per-project store: one SQLite database at `<project root>/.genctx/context.db`, which works on any file system. Context is generated automatically on every save by a local Ollama model running in the background. When you want to send a file to any LLM, click the genctx button in the VS Code status bar. It reads the stored context and the source, merges them into one plain text block, and copies it to the clipboard. You paste into any LLM. Zero terminal, zero commands, zero re-explaining.
 
 > **Important:** LLMs (including Claude) cannot read the store directly. It is purely local storage. The VS Code status bar button is the only bridge between the store and any LLM. Never upload raw files directly.
 
-> **History:** v0.1 stored context in NTFS Alternate Data Streams (`file.py:llmctx`). That limited llmctx to Windows/NTFS, and most copy, sync and archive tools silently dropped the streams. The store replaced it; see "Storage redesign" below. `ads.rs` survives only so `llmctx migrate` can read old streams.
+> **History:** v0.1 stored context in NTFS Alternate Data Streams (`file.py:genctx`). That limited genctx to Windows/NTFS, and most copy, sync and archive tools silently dropped the streams. The store replaced it; see "Storage redesign" below. `ads.rs` survives only so `genctx migrate` can read old streams.
 
 ---
 
@@ -26,27 +26,27 @@ A developer tool that eliminates the need to re-explain your codebase every time
 
 | Decision | Choice | Reason |
 |---|---|---|
-| Context storage | **Per-project SQLite store at `<root>/.llmctx/context.db`** (was NTFS ADS in v0.1) | Works on every OS and file system; one file that travels with the project folder; transactional; safe for daemon + CLI concurrently. `.llmctx/.gitignore` = `*`, so it ignores itself |
+| Context storage | **Per-project SQLite store at `<root>/.genctx/context.db`** (was NTFS ADS in v0.1) | Works on every OS and file system; one file that travels with the project folder; transactional; safe for daemon + CLI concurrently. `.genctx/.gitignore` = `*`, so it ignores itself |
 | LLM delivery | VS Code status bar button | User clicks, merged text lands in clipboard. Zero terminal needed |
 | Platform scope | **Any OS, any file system** | The store is an ordinary file; no NTFS features needed |
-| Project root | Nearest `llmcontext.yaml`, else nearest existing `.llmctx/` or `.git` | Files outside any project are skipped, so `.llmctx/` is never scattered next to stray files |
+| Project root | Nearest `gencontext.yaml`, else nearest existing `.genctx/` or `.git` | Files outside any project are skipped, so `.genctx/` is never scattered next to stray files |
 | Store keys | Root-relative `/`-separated path, plus content hash as secondary key | The hash lets renamed/moved/copied files keep their context without calling Ollama (what ADS gave for free) |
 | LLM for generation | Ollama (local) | Free, private, no API cost, runs in background |
 | Architecture | Daemon + CLI + VS Code extension + cpctx | Decoupled, editor-agnostic daemon |
 | Context generation | Ollama auto-generates on save | Zero manual work for the user |
-| Git behaviour | Store not tracked by git (self-ignoring `.llmctx/`) | Feature, not a bug. Devs run `llmctx index` after clone |
+| Git behaviour | Store not tracked by git (self-ignoring `.genctx/`) | Feature, not a bug. Devs run `genctx index` after clone |
 | Trigger | VS Code extension notifies daemon on file save | Extension stays thin, daemon does all work |
 | Daemon + CLI language | **Rust** | Single `.exe`, no runtime deps, tiny memory footprint, great for background daemon |
 | VS Code extension language | **TypeScript** | Non-negotiable — VS Code extension API requirement |
 | Distribution | **GitHub Releases** | Daemon `.exe` + CLI `.exe` + cpctx `.exe` published as release artifacts; VS Code extension via Marketplace. **Backlog: Windows code-signing cert before public launch** |
-| Project name | **llmctx** | Final |
-| Context for LLM-generated files | **Comment-block extraction**, not Ollama | LLM writes context as a delimited comment at the top of the file it generates (taught via `llmctx.md` skill file). Daemon/CLI detects it, writes it to the store, then strips it from source. Ollama is never called for these files |
+| Project name | **genctx** | Final |
+| Context for LLM-generated files | **Comment-block extraction**, not Ollama | LLM writes context as a delimited comment at the top of the file it generates (taught via `genctx.md` skill file). Daemon/CLI detects it, writes it to the store, then strips it from source. Ollama is never called for these files |
 | Concurrent saves | **Bounded worker pool for Ollama** (default 2 concurrent jobs) | Mass save must never spawn unbounded local-model inference |
-| `llmctx init` | **Non-interactive template drop** | Writes `llmcontext.yaml` with placeholder comments and exits immediately |
-| Context format versioning | **`version` column on every row (`CONTEXT_VERSION = 1`); table layout in `PRAGMA user_version`** | Mismatched rows read as missing → silently regenerate. A store from a newer llmctx is refused rather than misread |
-| Uninstall behaviour | **Delete `.llmctx/`** | Everything in it can be rebuilt by `llmctx index` |
-| Migration from v0.1 | **`llmctx migrate [--remove-streams]`** | Explicit, idempotent import of ADS context into the store; never overwrites newer store rows |
-| `llmctx.md` for non-Claude LLMs | **Out of scope for v1** | Targets Claude/Claude Code specifically for now |
+| `genctx init` | **Non-interactive template drop** | Writes `gencontext.yaml` with placeholder comments and exits immediately |
+| Context format versioning | **`version` column on every row (`CONTEXT_VERSION = 1`); table layout in `PRAGMA user_version`** | Mismatched rows read as missing → silently regenerate. A store from a newer genctx is refused rather than misread |
+| Uninstall behaviour | **Delete `.genctx/`** | Everything in it can be rebuilt by `genctx index` |
+| Migration from v0.1 | **`genctx migrate [--remove-streams]`** | Explicit, idempotent import of ADS context into the store; never overwrites newer store rows |
+| `genctx.md` for non-Claude LLMs | **Out of scope for v1** | Targets Claude/Claude Code specifically for now |
 | Auto-update | **Passive check on daemon startup only** | One-time GitHub Releases check, never auto-replaces running `.exe` |
 | Copying files | **`cpctx` — context-preserving copy tool** | Whole-project copies need nothing (the store is inside the folder). `cpctx copy` is for copying files into a *different* project: it copies bytes first, then carries each file's context from the source store to the destination store. `cpctx setup` registers itself on the user PATH permanently (no admin required) |
 
@@ -57,22 +57,22 @@ A developer tool that eliminates the need to re-explain your codebase every time
 ### crates/core (shared library) ✅
 - **`lib.rs`** — re-exports all public modules
 - **`store.rs`** — the context store. `ContextStore` (open / open_existing / open_for_file, get, put, remove, lookup, prune_missing), `StoreSet` (one open store per root for multi-file commands), `project_root()`, `retarget_body()`. `lookup()` returns `Current | Adopted | Stale | Missing`; `Adopted` is the rename/copy carry-over by content hash, and drops the donor row when its file is gone
-- **`ads.rs`** — *legacy.* ADS read/write via `windows-rs`, now only read by `llmctx migrate`. Non-Windows stub returns `AdsError::NotSupported` gracefully
-- **`config.rs`** — `llmcontext.yaml` parsing with per-file walk-up resolution (mirrors `.gitignore` semantics). `find_config()`, `load_config()`, `load_config_for_file()`. `ProjectConfig` struct with `header_block()` builder
-- **`extract.rs`** — `<<<LLMCTX … LLMCTX>>>` comment-block detection and stripping. **Only a block at the top of a file counts** (after at most a few preamble lines: shebang, `#![…]`, encoding cookie, `<?php`…), so docs showing the format are never rewritten. Handles all comment prefix styles (`#`, `//`, `/* */`, `<!-- -->`). Validates all six required fields. Keeps CRLF line endings. Malformed blocks fall through to Ollama — never a silent failure
-- **`ollama.rs`** — `OllamaClient` wrapping `reqwest`. `resolve_ollama_url()`: `LLMCTX_OLLAMA_URL` (user) wins; repo `ollama_url` must be loopback. `generate()` asks for JSON (`format: "json"`, `temperature: 0`, fixed `num_ctx`), validates the six fields (JSON or `KEY: value`, fences stripped), retries once, always sets `FILE` to the real path and `USED BY: UNKNOWN`
+- **`ads.rs`** — *legacy.* ADS read/write via `windows-rs`, now only read by `genctx migrate`. Non-Windows stub returns `AdsError::NotSupported` gracefully
+- **`config.rs`** — `gencontext.yaml` parsing with per-file walk-up resolution (mirrors `.gitignore` semantics). `find_config()`, `load_config()`, `load_config_for_file()`. `ProjectConfig` struct with `header_block()` builder
+- **`extract.rs`** — `<<<GENCTX … GENCTX>>>` comment-block detection and stripping. **Only a block at the top of a file counts** (after at most a few preamble lines: shebang, `#![…]`, encoding cookie, `<?php`…), so docs showing the format are never rewritten. Handles all comment prefix styles (`#`, `//`, `/* */`, `<!-- -->`). Validates all six required fields. Keeps CRLF line endings. Malformed blocks fall through to Ollama — never a silent failure
+- **`ollama.rs`** — `OllamaClient` wrapping `reqwest`. `resolve_ollama_url()`: `GENCTX_OLLAMA_URL` (user) wins; repo `ollama_url` must be loopback. `generate()` asks for JSON (`format: "json"`, `temperature: 0`, fixed `num_ctx`), validates the six fields (JSON or `KEY: value`, fences stripped), retries once, always sets `FILE` to the real path and `USED BY: UNKNOWN`
 - **`process.rs`** — **the keystone**. `prepare()` makes every decision without side effects (project → ignore rules → read → resume gate/carry-over → extraction → size gates → generate); `plan()` exposes it read-only (the daemon uses it), `process_file()` executes it. Committed blocks (present at git `HEAD`) are stored but left in the file. Source rewrites are atomic. `ProcessSource` gained `ExtractedKept`, `SkippedIgnored`, `has_context()`, `describe()`
 - **`store.rs`** additions — schema v2 (six `fields` + `source` column; v1 upgraded in place), `resolve()` (read-only) + `adopt()`, keys in on-disk case via `canonicalize`, `rename_path`/`remove_path` (directory prefixes), `prune_missing(under)`, `importers_of()`, `move_context()`/`forget_context()` for editor events, linked nested-project stores for cross-project moves
 - **`pack.rs`** — read-only rendering: `pack()` (header from current config + fields + optional imported files' context + source), `file_context()`, `project_map()`, `search()`; `USED BY` computed from other files' `IMPORTS`
-- **`filter.rs`** — single-file ignore check (hidden components, `llmctx_ignore`, `.ignore`/`.gitignore` up to the repo root, `.git/info/exclude`, global excludes)
+- **`filter.rs`** — single-file ignore check (hidden components, `genctx_ignore`, `.ignore`/`.gitignore` up to the repo root, `.git/info/exclude`, global excludes)
 - **`runtime.rs`** — daemon discovery file (`daemon.json`: port, token, pid, version) in a per-user, private location; random token; constant-time compare
 - **`fsutil.rs`** (atomic `replace_file`, lexical `absolute`), **`git.rs`** (`committed_version` via `git show HEAD:./file`), **`migrate.rs`** (ADS → store, with Windows-only tests)
 
 ### crates/daemon ✅
-- **`main.rs`** — binds `127.0.0.1:0` (or `LLMCTX_DAEMON_PORT`), publishes port + random token via `runtime.rs`, exits if a live daemon already answers the handshake, removes the file on Ctrl-C/SIGTERM. Every connection must send `hello{token}` first. Inbound: `save`, `rename`, `delete`. Saves call `process::plan()` first: skip/up-to-date/carry-over/extract are answered immediately; only `Generate` is debounced (30 s) and queued behind a per-Ollama-server semaphore sized from `ollama_concurrency`. Status states: queued/generating/ready/skipped/error — `ready` only when context is stored. Update check against the real repo, opt-out via `LLMCTX_NO_UPDATE_CHECK`. `--version`/`--help`
+- **`main.rs`** — binds `127.0.0.1:0` (or `GENCTX_DAEMON_PORT`), publishes port + random token via `runtime.rs`, exits if a live daemon already answers the handshake, removes the file on Ctrl-C/SIGTERM. Every connection must send `hello{token}` first. Inbound: `save`, `rename`, `delete`. Saves call `process::plan()` first: skip/up-to-date/carry-over/extract are answered immediately; only `Generate` is debounced (30 s) and queued behind a per-Ollama-server semaphore sized from `ollama_concurrency`. Status states: queued/generating/ready/skipped/error — `ready` only when context is stored. Update check against the real repo, opt-out via `GENCTX_NO_UPDATE_CHECK`. `--version`/`--help`
 
 ### crates/cli ✅
-- **`main.rs`** — subcommands: `init`, `index` (streaming walker, honours `.gitignore` even without git, never descends into `.llmctx/`, prunes stale rows under the indexed dir at the end), `pack` (`--stdout`, `--with-imports`; on Linux a detached `__serve-clipboard` helper keeps the clipboard alive after exit), `map`, `reindex`, `extract`, `migrate`, `gc`, `mcp`
+- **`main.rs`** — subcommands: `init`, `index` (streaming walker, honours `.gitignore` even without git, never descends into `.genctx/`, prunes stale rows under the indexed dir at the end), `pack` (`--stdout`, `--with-imports`; on Linux a detached `__serve-clipboard` helper keeps the clipboard alive after exit), `map`, `reindex`, `extract`, `migrate`, `gc`, `mcp`
 - **`mcp.rs`** — MCP server over stdio (JSON-RPC 2.0, protocol 2024-11-05 … 2025-06-18): `get_file_context`, `project_map`, `search_context`; read-only, confined to the project root
 
 ### crates/cpctx ✅ (new)
@@ -81,23 +81,23 @@ A developer tool that eliminates the need to re-explain your codebase every time
   - `cpctx setup` — on Windows: writes binary dir to `HKCU\Environment\Path` registry key (permanent, no admin), patches PowerShell profile with a guarded `$env:PATH` prepend, idempotent. On non-Windows: prints manual `export PATH=` instructions
 
 ### vscode-extension ✅
-- **`extension.ts`** — `activate()` wires save / rename / delete listeners → daemon, active-editor change → `statusBar.refresh()`, commands `llmctx.pack`, `llmctx.packWithImports`, `llmctx.copyProjectMap`, `llmctx.reindex`, `llmctx.openConfig`
-- **`daemon.ts`** — `DaemonClient` reads the discovery file (same path rules as `runtime.rs`), sends `hello{token}`, waits for `welcome`, reconnects with backoff (`1s → 30s`), auto-starts a detached `llmctxd` once per session (`llmctx.autoStartDaemon`, `llmctx.daemonPath`, passes `LLMCTX_OLLAMA_URL`)
+- **`extension.ts`** — `activate()` wires save / rename / delete listeners → daemon, active-editor change → `statusBar.refresh()`, commands `genctx.pack`, `genctx.packWithImports`, `genctx.copyProjectMap`, `genctx.reindex`, `genctx.openConfig`
+- **`daemon.ts`** — `DaemonClient` reads the discovery file (same path rules as `runtime.rs`), sends `hello{token}`, waits for `welcome`, reconnects with backoff (`1s → 30s`), auto-starts a detached `genctxd` once per session (`genctx.autoStartDaemon`, `genctx.daemonPath`, passes `GENCTX_OLLAMA_URL`)
 - **`statusBar.ts`** — icons: `$(clock)` queued, `$(sync~spin)` generating, `$(check)` ready, `$(circle-slash)` skipped (tooltip says why), `$(warning)` error
-- **`pack.ts`** — runs `llmctx pack --stdout`, `llmctx map`, `llmctx reindex`; writes the clipboard with `vscode.env.clipboard`. `llmctx.ollamaUrl`, `llmctx.cliPath`, `llmctx.daemonPath` are machine-scoped so a workspace can't set them
-- **`package.json`** — `configurationDefaults` hide `**/.llmctx` from Explorer/search/watcher; `package-lock.json` committed for `npm ci`
+- **`pack.ts`** — runs `genctx pack --stdout`, `genctx map`, `genctx reindex`; writes the clipboard with `vscode.env.clipboard`. `genctx.ollamaUrl`, `genctx.cliPath`, `genctx.daemonPath` are machine-scoped so a workspace can't set them
+- **`package.json`** — `configurationDefaults` hide `**/.genctx` from Explorer/search/watcher; `package-lock.json` committed for `npm ci`
 - **`hash.ts`** — `contentHash()` via Node `crypto.createHash('sha256')`, matches `process::content_hash()` byte-for-byte
 
 ### project files ✅
 - `Cargo.toml` — workspace root, all four crates, shared deps, `rust-version = "1.88"` (verified with that toolchain), `resolver = "3"` (MSRV-aware lockfile), no version pins
 - `Cargo.lock` — committed (binaries: reproducible builds)
 - `.github/workflows/ci.yml` — fmt, clippy `-D warnings` and tests on Linux/macOS/Windows, MSRV check, extension lint + compile
-- `llmcontext.yaml` — dogfooding: llmctx config for the llmctx project itself
-- `docs/llmctx.md` — skill file (moved from repo root into `docs/`); teaches any LLM the `<<<LLMCTX` comment format
+- `gencontext.yaml` — dogfooding: genctx config for the genctx project itself
+- `docs/genctx.md` — skill file (moved from repo root into `docs/`); teaches any LLM the `<<<GENCTX` comment format
 - `docs/USAGE.md` — day-to-day usage walkthrough on a real project (CodeA4), added after the initial build
-- `docs/llmctx_architecture_v5.svg`, `docs/llmctx_tracker.md` — also moved from repo root into `docs/`; only `README.md` stays at the project root now
+- `docs/genctx_architecture_v5.svg`, `docs/genctx_tracker.md` — also moved from repo root into `docs/`; only `README.md` stays at the project root now
 - `.gitignore`
-- `vscode-extension/package.json` — includes `llmctx.cliPath` setting for binary path override, plus `vscode:prepublish` script (see Bugs Found & Fixed)
+- `vscode-extension/package.json` — includes `genctx.cliPath` setting for binary path override, plus `vscode:prepublish` script (see Bugs Found & Fixed)
 - `vscode-extension/tsconfig.json`, `.eslintrc.json`, `.vscodeignore`
 - `README.md` — full documentation including: step-by-step Rust install guide (for users new to Rust), cpctx usage and setup, CLI reference, repo layout with annotated tree, architecture diagram, caveats, and a Documentation table linking into `docs/`
 
@@ -173,9 +173,9 @@ claiming older versions. The old `clap`/`zeroize` pins are gone.
 
 | Item | Notes |
 |---|---|
-| Replace `"publisher": "llmctx"` | `vscode-extension/package.json` — update to the real VS Code Marketplace publisher ID before Marketplace submission |
+| Replace `"publisher": "genctx"` | `vscode-extension/package.json` — update to the real VS Code Marketplace publisher ID before Marketplace submission |
 | First CI run | The Windows job runs the real NTFS-stream round trip, `migrate`, the hidden attribute and case-insensitive keys; macOS runs the case-insensitive key test. Neither has run yet (locally everything is verified on Linux plus a Windows cross-compile) |
-| End-to-end in real VS Code | The daemon protocol, auto-start and the extension's client code were exercised headlessly (Node against a real `llmctxd`); the status bar and commands still need a look in an actual VS Code window |
+| End-to-end in real VS Code | The daemon protocol, auto-start and the extension's client code were exercised headlessly (Node against a real `genctxd`); the status bar and commands still need a look in an actual VS Code window |
 | ~~VS Code extension packaging~~ | ✅ Done — `npm install && npm run package` verified producing a working `.vsix` after the `vscode:prepublish` fix |
 | Code signing | Windows code-signing cert for all three `.exe` files before public launch (SmartScreen / Defender false positives on unsigned daemons that listen on a socket) |
 
@@ -184,29 +184,29 @@ claiming older versions. The old `clap`/`zeroize` pins are gone.
 ## Rust Workspace Structure (as built)
 
 ```
-llmctx/
+genctx/
 ├── Cargo.toml                  ← workspace root, four crates
-├── llmcontext.yaml
+├── gencontext.yaml
 ├── README.md
 ├── .gitignore
 ├── docs/
 │   ├── USAGE.md                ← real-project walkthrough (added post-build)
-│   ├── llmctx.md                ← skill file for LLMs (teaches <<<LLMCTX format)
-│   ├── llmctx_architecture_v5.svg
-│   └── llmctx_tracker.md        ← this file
+│   ├── genctx.md                ← skill file for LLMs (teaches <<<GENCTX format)
+│   ├── genctx_architecture_v5.svg
+│   └── genctx_tracker.md        ← this file
 └── crates/
-    ├── core/                   ← shared library (llmctx-core)
+    ├── core/                   ← shared library (genctx-core)
     │   └── src/
     │       ├── lib.rs
-    │       ├── store.rs        ← .llmctx/context.db (SQLite) — the context store
-    │       ├── ads.rs          ← legacy NTFS ADS reader, used by `llmctx migrate`
-    │       ├── config.rs       ← llmcontext.yaml, walk-up resolution
-    │       ├── extract.rs      ← <<<LLMCTX block detection + stripping
+    │       ├── store.rs        ← .genctx/context.db (SQLite) — the context store
+    │       ├── ads.rs          ← legacy NTFS ADS reader, used by `genctx migrate`
+    │       ├── config.rs       ← gencontext.yaml, walk-up resolution
+    │       ├── extract.rs      ← <<<GENCTX block detection + stripping
     │       ├── ollama.rs       ← Ollama /api/generate client
     │       └── process.rs      ← process_file() — the keystone
-    ├── daemon/                 ← llmctxd binary
+    ├── daemon/                 ← genctxd binary
     │   └── src/main.rs
-    ├── cli/                    ← llmctx binary
+    ├── cli/                    ← genctx binary
     │   └── src/main.rs
     └── cpctx/                  ← cpctx binary (NEW)
         └── src/main.rs
@@ -237,7 +237,7 @@ vscode-extension/
 | File hashing for debounce | `sha2` |
 | Logging | `tracing` + `tracing-subscriber` |
 | Error types | `thiserror` + `anyhow` |
-| Gitignore-aware walker | `ignore` (used by `llmctx index`) |
+| Gitignore-aware walker | `ignore` (used by `genctx index`) |
 | Context store | `rusqlite` (`bundled`) |
 | Ollama host check | `url` |
 | Daemon auth token | `getrandom` |
@@ -265,13 +265,13 @@ vscode-extension/
 {"type":"status","path":"...","state":"skipped","message":"skipped: too small to need context"}
 ```
 
-Pack does NOT go over the socket — handled entirely in the extension by shelling out to `llmctx pack`.
+Pack does NOT go over the socket — handled entirely in the extension by shelling out to `genctx pack`.
 
 ---
 
 ## Stored Context Format
 
-Schema v2: one row per file in `context` (`rel_path` PK, `content_hash`, `source` = `llm`|`ollama`, `fields`, `version`, `updated_at`; index on `content_hash`), plus `linked_stores` (nested project roots). `fields` holds only the six lines; `llmctx pack` renders the header from the current config and computes `USED BY`:
+Schema v2: one row per file in `context` (`rel_path` PK, `content_hash`, `source` = `llm`|`ollama`, `fields`, `version`, `updated_at`; index on `content_hash`), plus `linked_stores` (nested project roots). `fields` holds only the six lines; `genctx pack` renders the header from the current config and computes `USED BY`:
 
 ```
 === PROJECT ===
@@ -294,7 +294,7 @@ NOTES: Any unusual patterns or gotchas
 
 **Problem solved:** copying files from one project into another would leave their context behind in the source project's store. (Copying a whole project folder needs nothing, since the store is inside it.)
 
-**Solution:** `cpctx copy <src> <dest>` copies all file content first, then for each file reads its row from the source project's store and writes it into the destination project's store, with `FILE:` rewritten to the new path. Copying bytes first matters: a copied `llmcontext.yaml` must be in place before destination roots are resolved. `.llmctx/` directories are skipped during the byte copy, and a copied folder that lands outside every project gets its own store.
+**Solution:** `cpctx copy <src> <dest>` copies all file content first, then for each file reads its row from the source project's store and writes it into the destination project's store, with `FILE:` rewritten to the new path. Copying bytes first matters: a copied `gencontext.yaml` must be in place before destination roots are resolved. `.genctx/` directories are skipped during the byte copy, and a copied folder that lands outside every project gets its own store.
 
 **PATH registration:** `cpctx setup` (run once, no admin required):
 1. Reads `HKCU\Environment\Path` via `reg query`
@@ -302,18 +302,18 @@ NOTES: Any unusual patterns or gotchas
 3. Detects the PowerShell profile path via `$PROFILE`, appends a guarded `$env:PATH` block
 4. Both steps are idempotent — running setup twice is safe
 
-**Failures carrying context are warnings, not errors:** the bytes are already copied, and `llmctx index` can regenerate anything missing.
+**Failures carrying context are warnings, not errors:** the bytes are already copied, and `genctx index` can regenerate anything missing.
 
 ---
 
 ## Storage redesign (v0.1 → store)
 
-- **Why:** ADS exists only on NTFS, and Explorer copies, `cp`, ZIP, cloud sync, WSL, FAT/exFAT and most network shares drop it. llmctx needed storage it owns, independent of the user's file system. This follows the same principle as HDFS: a storage format and index kept in ordinary files on the native file system, not a kernel-level file system.
-- **What:** `crates/core/src/store.rs`, one SQLite DB per project in a self-ignoring `.llmctx/`. Rollback journal rather than WAL, because WAL's shared memory breaks on network file systems. `busy_timeout` of 5 s lets the daemon and CLI write concurrently.
+- **Why:** ADS exists only on NTFS, and Explorer copies, `cp`, ZIP, cloud sync, WSL, FAT/exFAT and most network shares drop it. genctx needed storage it owns, independent of the user's file system. This follows the same principle as HDFS: a storage format and index kept in ordinary files on the native file system, not a kernel-level file system.
+- **What:** `crates/core/src/store.rs`, one SQLite DB per project in a self-ignoring `.genctx/`. Rollback journal rather than WAL, because WAL's shared memory breaks on network file systems. `busy_timeout` of 5 s lets the daemon and CLI write concurrently.
 - **Renames:** lookups fall back from path to content hash; `Adopted` context is re-keyed and its `FILE:` field retargeted.
-- **New CLI:** `llmctx gc` (prune rows for missing files), `llmctx migrate` (import v0.1 streams).
+- **New CLI:** `genctx gc` (prune rows for missing files), `genctx migrate` (import v0.1 streams).
 - **Daemon:** ignores saves outside any project before queueing.
-- **Extension:** `configurationDefaults` hide `**/.llmctx` from the Explorer and the file watcher.
+- **Extension:** `configurationDefaults` hide `**/.genctx` from the Explorer and the file watcher.
 
 ---
 
@@ -321,17 +321,17 @@ NOTES: Any unusual patterns or gotchas
 
 A critical review found, and this pass fixed (each reproduced first, then covered by tests):
 
-- **Docs were being corrupted** — a `<<<LLMCTX` line *anywhere* was extracted, so indexing this repo rewrote `docs/llmctx.md` and `README.md`. Now only a top-of-file block counts, and a block committed in git is stored but never stripped (indexing this repo modified 17 tracked files before; 0 after).
-- **The daemon ignored `.gitignore`/`llmctx_ignore`** — saves of `.env` etc. were processed. Ignore rules now live in core (`filter.rs`) and apply to every entry point.
-- **A repo chose where code was sent** — `ollama_url` from `llmcontext.yaml` could be remote. Now loopback-only; remote needs `LLMCTX_OLLAMA_URL`/machine-scoped `llmctx.ollamaUrl`.
+- **Docs were being corrupted** — a `<<<GENCTX` line *anywhere* was extracted, so indexing this repo rewrote `docs/genctx.md` and `README.md`. Now only a top-of-file block counts, and a block committed in git is stored but never stripped (indexing this repo modified 17 tracked files before; 0 after).
+- **The daemon ignored `.gitignore`/`genctx_ignore`** — saves of `.env` etc. were processed. Ignore rules now live in core (`filter.rs`) and apply to every entry point.
+- **A repo chose where code was sent** — `ollama_url` from `gencontext.yaml` could be remote. Now loopback-only; remote needs `GENCTX_OLLAMA_URL`/machine-scoped `genctx.ollamaUrl`.
 - **Unsafe rewrites** — `fs::write` (truncate first) and CRLF → LF. Now temp file + rename, permissions/symlinks/CRLF kept.
 - **Stale project header** — PROJECT/TASK were copied into every row. Now rendered at pack time (schema v2).
 - **Status bar lied** — `ready` for skipped files. Now `skipped` with a reason; unchanged saves answer instantly.
-- **Linux clipboard** — contents vanished when `llmctx pack` exited. Extension now uses the VS Code clipboard; the CLI uses a detached helper.
+- **Linux clipboard** — contents vanished when `genctx pack` exited. Extension now uses the VS Code clipboard; the CLI uses a detached helper.
 - **Daemon** — hard-coded concurrency 2, unauthenticated fixed port, silent port fallback. Now per-server limits from config, OS port + token discovery file, single instance.
 - **Generation quality** — no output validation, `num_ctx` unset (silent truncation), `USED BY` guessed. Now JSON + validation + retry, fixed `num_ctx`, computed `USED BY`.
 - **Store edge cases** — case-variant keys on Windows/macOS, rename+edit losing context, cross-nested-project moves, stale rows. Fixed via on-disk-case keys, editor rename/delete events, linked stores, prune at end of `index`.
-- **New** — MCP server (`llmctx mcp`), `llmctx map`, `pack --with-imports`, extension auto-starts the daemon, CI, committed lockfile, honest MSRV.
+- **New** — MCP server (`genctx mcp`), `genctx map`, `pack --with-imports`, extension auto-starts the daemon, CI, committed lockfile, honest MSRV.
 
 ---
 
@@ -347,12 +347,12 @@ continue:
 
 2. **Try it in a real VS Code window** on Windows:
    ```powershell
-   cargo build --release -p llmctxd -p llmctx -p cpctx
+   cargo build --release -p genctxd -p genctx -p cpctx
    cpctx setup
-   # Open a project in VS Code: the extension starts llmctxd itself. Save a file with a
-   # <<<LLMCTX block and confirm it is stripped, .llmctx\ appears (hidden) and the
+   # Open a project in VS Code: the extension starts genctxd itself. Save a file with a
+   # <<<GENCTX block and confirm it is stripped, .genctx\ appears (hidden) and the
    # status bar goes to $(check). Save .env: $(circle-slash). Rename a file in the
-   # Explorer and pack it. Then run `llmctx migrate` on a project with v0.1 streams.
+   # Explorer and pack it. Then run `genctx migrate` on a project with v0.1 streams.
    ```
 
 3. **Set the Marketplace publisher** in `vscode-extension/package.json` (`"publisher"`)
