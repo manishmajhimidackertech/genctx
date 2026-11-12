@@ -17,6 +17,7 @@ use crate::{
     config::{self, ProjectConfig},
     extract::{self, ExtractError, ExtractedContext},
     filter, fsutil, git,
+    graph::{self, Scan, Stamp},
     ollama::{OllamaClient, OllamaError},
     store::{self, ContextStore, Donor, Lookup, StoreError},
 };
@@ -229,6 +230,7 @@ pub async fn process_file(
 
         Step::Reuse(donor) => {
             let adopted = store.adopt(&rel_path, &hash, &donor)?;
+            record_graph(&store, path, &rel_path, &source, None);
             info!(
                 ?path,
                 from = %donor.context.rel_path,
@@ -248,6 +250,7 @@ pub async fn process_file(
                 // show up as a change in everyone's working tree, so store it
                 // and leave the file alone.
                 store.put(&rel_path, &hash, "llm", &fields)?;
+                record_graph(&store, path, &rel_path, &source, None);
                 info!(
                     ?path,
                     "<<<GENCTX block is committed in git — stored, left in file"
@@ -276,6 +279,7 @@ pub async fn process_file(
                     source: e,
                 }
             })?;
+            record_graph(&store, path, &rel_path, &extracted.cleaned_source, None);
 
             Ok(ProcessResult {
                 source: ProcessSource::Extracted,
@@ -289,15 +293,38 @@ pub async fn process_file(
                 bytes = source.len(),
                 "calling Ollama for context generation"
             );
-            let generated = client.generate(&config, &rel_path, &source).await?;
+            // The dependency scan is a fraction of a millisecond; its result
+            // spares the model from inferring IMPORTS (see graph.rs).
+            let scan = graph::scan_file(store.key_root(), &rel_path, &source, None);
+            let generated = client
+                .generate(&config, &rel_path, &source, scan.imports.as_deref())
+                .await?;
             // The Ollama branch leaves the file untouched, so the hash is of
             // `source`.
             store.put(&rel_path, &hash, "ollama", &generated.fields)?;
+            record_graph(&store, path, &rel_path, &source, Some(scan));
             Ok(ProcessResult {
                 source: ProcessSource::Ollama,
                 context: Some(generated.fields),
             })
         }
+    }
+}
+
+/// Keep the dependency graph current for a file that was just processed.
+/// Best effort: the graph is derived data that `genctx graph` rebuilds, so
+/// a failure here must not fail the context write that already succeeded.
+fn record_graph(
+    store: &ContextStore,
+    path: &Path,
+    rel_path: &str,
+    source: &str,
+    scan: Option<Scan>,
+) {
+    let Some(stamp) = Stamp::of(path) else { return };
+    let scan = scan.unwrap_or_else(|| graph::scan_file(store.key_root(), rel_path, source, None));
+    if let Err(e) = graph::record(store, rel_path, source, stamp, &scan) {
+        warn!(?path, "could not update the dependency graph: {e}");
     }
 }
 

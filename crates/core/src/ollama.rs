@@ -256,17 +256,24 @@ impl OllamaClient {
     ///
     /// The answer is validated; an unusable one (not JSON, no ROLE) is
     /// retried once before giving up, since small models occasionally ramble.
+    ///
+    /// `known_imports` is the file's dependencies as the static scan found
+    /// them (`graph.rs`), when its language has a scanner. The model is then
+    /// told them instead of asked for them, and they become `IMPORTS:`
+    /// verbatim: less for a small model to produce, and nothing for it to
+    /// get wrong.
     pub async fn generate(
         &self,
         config: &ProjectConfig,
         rel_path: &str,
         source_code: &str,
+        known_imports: Option<&[String]>,
     ) -> Result<GeneratedContext, OllamaError> {
-        let prompt = build_prompt(config, rel_path, source_code);
+        let prompt = build_prompt(config, rel_path, source_code, known_imports);
         let mut last = String::new();
         for attempt in 1..=2 {
             let raw = self.generate_raw(config, &prompt).await?;
-            match parse_generated(&raw, rel_path) {
+            match parse_generated(&raw, rel_path, known_imports) {
                 Ok(fields) => return Ok(GeneratedContext { fields }),
                 Err(detail) => {
                     warn!(rel_path, attempt, "unusable Ollama answer: {detail}");
@@ -341,7 +348,11 @@ impl OllamaClient {
 /// `FILE:` is always the real path and `USED BY:` is always `UNKNOWN`: the
 /// model sees one file and cannot know either; `USED BY` is computed from the
 /// other files' `IMPORTS` when context is packed.
-fn parse_generated(raw: &str, rel_path: &str) -> Result<String, String> {
+fn parse_generated(
+    raw: &str,
+    rel_path: &str,
+    known_imports: Option<&[String]>,
+) -> Result<String, String> {
     let cleaned = strip_code_fence(raw);
     let mut values = std::collections::HashMap::<String, String>::new();
 
@@ -373,10 +384,14 @@ fn parse_generated(raw: &str, rel_path: &str) -> Result<String, String> {
             cleaned.chars().take(120).collect::<String>()
         ));
     }
+    let imports = match known_imports {
+        Some([]) => "NONE".to_string(),
+        Some(list) => list.join(", "),
+        None => get("imports", "NONE"),
+    };
     Ok(format!(
-        "FILE: {rel_path}\nROLE: {role}\nEXPORTS: {}\nIMPORTS: {}\nUSED BY: UNKNOWN\nNOTES: {}",
+        "FILE: {rel_path}\nROLE: {role}\nEXPORTS: {}\nIMPORTS: {imports}\nUSED BY: UNKNOWN\nNOTES: {}",
         get("exports", "NONE"),
-        get("imports", "NONE"),
         get("notes", "NONE"),
     ))
 }
@@ -424,11 +439,31 @@ impl Default for OllamaClient {
 
 // ── Prompt builder ───────────────────────────────────────────────────────────
 
-fn build_prompt(config: &ProjectConfig, rel_path: &str, source_code: &str) -> String {
+fn build_prompt(
+    config: &ProjectConfig,
+    rel_path: &str,
+    source_code: &str,
+    known_imports: Option<&[String]>,
+) -> String {
     let project = config.project.as_deref().unwrap_or("(unknown)");
     let stack = config.stack.as_deref().unwrap_or("");
     let task = config.task.as_deref().unwrap_or("");
     let conventions = config.conventions.join("\n- ");
+
+    // Known dependencies are context, not a question.
+    let (imports_key, imports_known) = match known_imports {
+        Some(list) => (
+            String::new(),
+            format!(
+                "Project files it imports (already known): {}\n",
+                if list.is_empty() { "none".to_string() } else { list.join(", ") }
+            ),
+        ),
+        None => (
+            "\n  \"imports\": \"other files of this project it depends on, as paths relative to the project root, comma separated, or NONE\",".to_string(),
+            String::new(),
+        ),
+    };
 
     format!(
         r#"You are a code context generator for LLM assistance.
@@ -443,13 +478,12 @@ Analyze the file below and answer with ONLY a JSON object with exactly these key
 
 {{
   "role": "one sentence: what this file does",
-  "exports": "key functions/classes/constants it exposes, comma separated, or NONE",
-  "imports": "other files of this project it depends on, as paths relative to the project root, comma separated, or NONE",
+  "exports": "key functions/classes/constants it exposes, comma separated, or NONE",{imports_key}
   "notes": "anything unusual an LLM should know, or NONE"
 }}
 
 File path: {rel_path}
-
+{imports_known}
 ```
 {source_code}
 ```"#
@@ -468,7 +502,7 @@ mod tests {
             project: Some("TestProj".into()),
             ..Default::default()
         };
-        let prompt = build_prompt(&cfg, "src/foo.rs", "fn foo() {}");
+        let prompt = build_prompt(&cfg, "src/foo.rs", "fn foo() {}", None);
         assert!(prompt.contains("src/foo.rs"));
         assert!(prompt.contains("fn foo()"));
         assert!(prompt.contains("TestProj"));
@@ -478,7 +512,7 @@ mod tests {
     fn json_answers_become_six_fields() {
         let raw = r#"{"Role": "Parses config", "exports": ["load", "save"], "IMPORTS": "a.rs", "notes": null, "file": "wrong.rs", "used_by": "x.rs"}"#;
         assert_eq!(
-            parse_generated(raw, "src/config.rs").unwrap(),
+            parse_generated(raw, "src/config.rs", None).unwrap(),
             "FILE: src/config.rs\nROLE: Parses config\nEXPORTS: load, save\nIMPORTS: a.rs\nUSED BY: UNKNOWN\nNOTES: NONE"
         );
     }
@@ -486,20 +520,20 @@ mod tests {
     #[test]
     fn fenced_and_plain_text_answers_are_accepted() {
         let fenced = "```json\n{\"role\": \"Does\\nthings\"}\n```";
-        assert!(parse_generated(fenced, "a.rs")
+        assert!(parse_generated(fenced, "a.rs", None)
             .unwrap()
             .contains("ROLE: Does things"));
 
         let text = "Sure! Here it is:\nROLE: Handles auth\nEXPORTS: login()\n";
-        let fields = parse_generated(text, "a.rs").unwrap();
+        let fields = parse_generated(text, "a.rs", None).unwrap();
         assert!(fields.contains("ROLE: Handles auth"));
         assert!(fields.contains("EXPORTS: login()"));
     }
 
     #[test]
     fn answers_without_a_role_are_rejected() {
-        assert!(parse_generated("I cannot help with that.", "a.rs").is_err());
-        assert!(parse_generated("{\"exports\": \"x\"}", "a.rs").is_err());
+        assert!(parse_generated("I cannot help with that.", "a.rs", None).is_err());
+        assert!(parse_generated("{\"exports\": \"x\"}", "a.rs", None).is_err());
     }
 
     #[test]
@@ -543,12 +577,27 @@ mod tests {
     }
 
     #[test]
+    fn known_imports_are_told_not_asked_and_win() {
+        let cfg = ProjectConfig::default();
+        let known = vec!["src/a.rs".to_string(), "src/b.rs".to_string()];
+        let prompt = build_prompt(&cfg, "x.rs", "", Some(&known));
+        assert!(!prompt.contains("\"imports\""));
+        assert!(prompt.contains("already known): src/a.rs, src/b.rs"));
+
+        let raw = r#"{"role": "r", "imports": "made/up.rs"}"#;
+        let fields = parse_generated(raw, "x.rs", Some(&known)).unwrap();
+        assert!(fields.contains("IMPORTS: src/a.rs, src/b.rs\n"));
+        let fields = parse_generated(raw, "x.rs", Some(&[])).unwrap();
+        assert!(fields.contains("IMPORTS: NONE\n"));
+    }
+
+    #[test]
     fn prompt_uses_conventions() {
         let cfg = ProjectConfig {
             conventions: vec!["No unwrap".into(), "Use thiserror".into()],
             ..Default::default()
         };
-        let prompt = build_prompt(&cfg, "x.rs", "");
+        let prompt = build_prompt(&cfg, "x.rs", "", None);
         assert!(prompt.contains("No unwrap"));
         assert!(prompt.contains("Use thiserror"));
     }

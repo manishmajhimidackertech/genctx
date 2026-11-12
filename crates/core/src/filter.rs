@@ -1,7 +1,7 @@
 // <<<GENCTX
 // FILE: crates/core/src/filter.rs
 // ROLE: Decide whether a single file is excluded by .gitignore/.ignore, hidden paths or genctx_ignore
-// EXPORTS: is_ignored()
+// EXPORTS: is_ignored(), project_walker()
 // IMPORTS: crates/core/src/fsutil.rs
 // USED BY: crates/core/src/process.rs
 // NOTES: Mirrors what `genctx index`'s walker skips, so the daemon (one file at a time) and index agree
@@ -19,7 +19,7 @@ use std::path::{Path, PathBuf};
 use ignore::{
     gitignore::{Gitignore, GitignoreBuilder},
     overrides::OverrideBuilder,
-    Match,
+    Match, WalkBuilder,
 };
 use tracing::warn;
 
@@ -125,6 +125,40 @@ pub fn is_ignored(root: &Path, path: &Path, genctx_ignore: &[String]) -> bool {
     }
 
     false
+}
+
+/// Walker over the project files under `dir`, applying the same rules as
+/// [`is_ignored`]: `.gitignore`/`.ignore` (even outside a git checkout),
+/// hidden paths, and `genctx_ignore` patterns (relative to `override_root`,
+/// the directory holding the config). It never descends into the store.
+///
+/// Shared by `genctx index` and the dependency graph, so both see the same
+/// set of files.
+pub fn project_walker(
+    dir: &Path,
+    override_root: &Path,
+    genctx_ignore: &[String],
+) -> Result<WalkBuilder, String> {
+    let mut walker = WalkBuilder::new(dir);
+    walker.standard_filters(true); // honours .gitignore, .git/, hidden files
+    walker.require_git(false);
+
+    // `!pattern` turns an override into an exclusion (un-prefixed override
+    // patterns are a whitelist).
+    let mut overrides = OverrideBuilder::new(override_root);
+    for pattern in genctx_ignore {
+        overrides
+            .add(&format!("!{pattern}"))
+            .map_err(|e| format!("invalid genctx_ignore pattern {pattern:?}: {e}"))?;
+    }
+    walker.overrides(overrides.build().map_err(|e| e.to_string())?);
+
+    // Hidden-file filtering already skips the store on most platforms, but
+    // Windows decides "hidden" by attribute — so exclude it explicitly.
+    walker.filter_entry(|e| {
+        e.file_name() != crate::store::STORE_DIR && e.file_name() != crate::store::LEGACY_STORE_DIR
+    });
+    Ok(walker)
 }
 
 /// `Some(true)` ignored, `Some(false)` explicitly re-included, `None` no rule.

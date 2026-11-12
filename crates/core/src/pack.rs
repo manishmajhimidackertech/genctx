@@ -2,7 +2,7 @@
 // FILE: crates/core/src/pack.rs
 // ROLE: Read-only views of stored context — packed text for an LLM, rendered per-file context, project map, search
 // EXPORTS: pack(), file_context(), project_map(), search(), Packed, FileContext
-// IMPORTS: crates/core/src/store.rs, crates/core/src/config.rs, crates/core/src/process.rs
+// IMPORTS: crates/core/src/store.rs, crates/core/src/config.rs, crates/core/src/process.rs, crates/core/src/graph.rs
 // USED BY: crates/cli/src/main.rs (pack, map, mcp)
 // NOTES: Never writes to the store; the project header and USED BY are computed here, at read time
 // GENCTX>>>
@@ -172,23 +172,33 @@ fn with_used_by(store: &ContextStore, rel_path: &str, fields: &str) -> String {
     }
 }
 
-/// Stored context of each project file named in `fields`' IMPORTS.
+/// Stored context of each project file this one depends on: those named in
+/// `fields`' IMPORTS, plus those the dependency graph found by scanning the
+/// source (so a file whose IMPORTS line is incomplete still brings its
+/// dependencies along).
 fn imported_contexts(path: &Path, fields: &str) -> Result<Vec<(String, String)>, ProcessError> {
-    let Some((store, _)) = ContextStore::open_existing_for_file(path)? else {
+    let Some((store, rel_path)) = ContextStore::open_existing_for_file(path)? else {
         return Ok(Vec::new());
     };
-    let imports = store::field_value(fields, "IMPORTS").unwrap_or("");
-    let mut out = Vec::new();
-    for rel in imports.split(',').map(|p| {
-        p.trim()
-            .trim_matches(|c| c == '`' || c == '"' || c == '\'')
-            .replace('\\', "/")
-            .trim_start_matches("./")
-            .to_string()
-    }) {
-        if rel.is_empty() {
-            continue;
+    let declared = store::field_value(fields, "IMPORTS").unwrap_or("");
+    let mut targets: Vec<String> = declared
+        .split(',')
+        .map(|p| {
+            p.trim()
+                .trim_matches(|c| c == '`' || c == '"' || c == '\'')
+                .replace('\\', "/")
+                .trim_start_matches("./")
+                .to_string()
+        })
+        .filter(|p| !p.is_empty())
+        .collect();
+    for dep in store.imports_of(&rel_path)? {
+        if !targets.contains(&dep) {
+            targets.push(dep);
         }
+    }
+    let mut out = Vec::new();
+    for rel in targets {
         if let Some(StoredContext { fields, .. }) = store.get(&rel)? {
             out.push((rel.clone(), with_used_by(&store, &rel, &fields)));
         }
@@ -290,6 +300,38 @@ mod tests {
         let packed = pack(&app, true).unwrap().text;
         assert!(packed
             .contains("=== CONTEXT: lib/util.py (imported) ===\nFILE: lib/util.py\nROLE: helpers"));
+    }
+
+    #[test]
+    fn with_imports_uses_scanned_dependencies_too() {
+        let (dir, store) = project();
+        let app = write(&dir, "app.py", "import helpers\n");
+        write(&dir, "helpers.py", "H = 1\n");
+        store
+            .put(
+                "helpers.py",
+                &content_hash("H = 1\n"),
+                "llm",
+                "FILE: helpers.py\nROLE: help",
+            )
+            .unwrap();
+        // The stored IMPORTS line missed the dependency.
+        store
+            .put(
+                "app.py",
+                &content_hash("import helpers\n"),
+                "llm",
+                "FILE: app.py\nROLE: entry\nIMPORTS: NONE",
+            )
+            .unwrap();
+        crate::graph::sync(&store).unwrap();
+        let packed = pack(&app, true).unwrap().text;
+        assert!(packed.contains("=== CONTEXT: helpers.py (imported) ==="));
+        assert!(file_context(&dir.path().join("helpers.py"))
+            .unwrap()
+            .unwrap()
+            .fields
+            .contains("USED BY: app.py"));
     }
 
     #[test]

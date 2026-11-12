@@ -23,6 +23,7 @@ use tracing::{error, info, warn};
 
 use genctx_core::{
     config::{self, ProjectConfig, CONFIG_FILENAME},
+    filter, graph,
     migrate::{self, ImportOutcome},
     ollama::{OllamaClient, OllamaError},
     pack,
@@ -84,6 +85,25 @@ enum Command {
         /// Any directory inside the project (default: current working directory).
         #[arg(default_value = ".")]
         dir: PathBuf,
+
+        /// Copy to the clipboard instead of printing.
+        #[arg(long)]
+        copy: bool,
+    },
+
+    /// Print the project's dependency graph: which file imports which.
+    ///
+    /// Built by scanning import statements — no Ollama — and kept in the
+    /// project's store, so only files changed since the last run are read.
+    Graph {
+        /// Any directory inside the project (default: current working directory).
+        #[arg(default_value = ".")]
+        dir: PathBuf,
+
+        /// Print the whole graph as JSON (nodes with role and context state,
+        /// and edges), as the VS Code graph view reads it.
+        #[arg(long, conflicts_with = "copy")]
+        json: bool,
 
         /// Copy to the clipboard instead of printing.
         #[arg(long)]
@@ -172,6 +192,7 @@ async fn main() -> Result<()> {
             with_imports,
         } => cmd_pack(&file, stdout, with_imports)?,
         Command::Map { dir, copy } => cmd_map(&dir, copy)?,
+        Command::Graph { dir, json, copy } => cmd_graph(&dir, json, copy)?,
         Command::Reindex { file } => cmd_reindex(&file, Arc::clone(&client)).await?,
         Command::Extract { file, force } => cmd_extract(&file, Arc::clone(&client), force).await?,
         Command::Migrate {
@@ -257,31 +278,12 @@ fn load_dir_config(dir: &Path) -> (PathBuf, ProjectConfig) {
     }
 }
 
-/// Walker over the project files under `dir`: honours .gitignore (even
-/// outside a git checkout, like the daemon) and the config's `genctx_ignore`,
-/// and never descends into the context store.
+/// Walker over the project files under `dir` (see
+/// [`filter::project_walker`]).
 fn project_walker(dir: &Path, config_path: &Path, config: &ProjectConfig) -> Result<WalkBuilder> {
-    let mut walker = WalkBuilder::new(dir);
-    walker.standard_filters(true); // honours .gitignore, .git/, hidden files
-    walker.require_git(false);
-
-    // Add genctx_ignore patterns as overrides.
-    // `ignore` crate supports adding override globs directly.
-    let mut overrides =
-        ignore::overrides::OverrideBuilder::new(config_path.parent().unwrap_or(dir));
-    for pattern in &config.genctx_ignore {
-        // Prefix with `!` to turn them into ignore patterns (OverrideBuilder
-        // treats un-prefixed patterns as whitelist; `!` means exclude).
-        overrides
-            .add(&format!("!{pattern}"))
-            .with_context(|| format!("invalid genctx_ignore pattern: {pattern}"))?;
-    }
-    walker.overrides(overrides.build()?);
-
-    // Hidden-file filtering already skips `.genctx/` on most platforms, but
-    // Windows decides "hidden" by attribute — so exclude it explicitly.
-    walker.filter_entry(|e| e.file_name() != STORE_DIR);
-    Ok(walker)
+    let override_root = config_path.parent().unwrap_or(dir);
+    filter::project_walker(dir, override_root, &config.genctx_ignore)
+        .map_err(|e| anyhow::anyhow!(e))
 }
 
 async fn cmd_index(dir: &Path, client: Arc<OllamaClient>, force: bool) -> Result<()> {
@@ -324,6 +326,26 @@ async fn cmd_index(dir: &Path, client: Arc<OllamaClient>, force: bool) -> Result
             // Reachable but odd (unexpected HTTP status, unparseable body).
             // Not worth aborting the run over.
             warn!("could not list Ollama models: {e} — continuing anyway");
+        }
+    }
+
+    // ── Dependency map ────────────────────────────────────────────────────────
+    // Scanning imports takes seconds even for a large project, and it means
+    // every Ollama call below is told the file's imports rather than asked
+    // to infer them.
+    if let Some(root) = store::project_root(dir) {
+        match ContextStore::open(&root)
+            .map_err(graph::GraphError::from)
+            .and_then(|s| {
+                graph::sync(&s)?;
+                Ok(graph::load(&s)?)
+            }) {
+            Ok(g) => info!(
+                "dependency map: {} files, {} links",
+                g.nodes.len(),
+                g.edges.len()
+            ),
+            Err(e) => warn!("could not build the dependency map: {e}"),
         }
     }
 
@@ -543,6 +565,24 @@ fn cmd_map(dir: &Path, copy: bool) -> Result<()> {
     let root = store::project_root(dir).unwrap_or_else(|| dir.to_path_buf());
     let map = pack::project_map(&root)?;
     deliver(&map, copy, "project map")
+}
+
+fn cmd_graph(dir: &Path, json: bool, copy: bool) -> Result<()> {
+    let root = store::project_root(dir).ok_or_else(|| {
+        anyhow::anyhow!(
+            "{} is not inside a genctx project (no {CONFIG_FILENAME}, {STORE_DIR}/ or .git above it)",
+            dir.display()
+        )
+    })?;
+    let store = ContextStore::open(&root)?;
+    let stats = graph::sync(&store)?;
+    let mut g = graph::load(&store)?;
+    if json {
+        g.sync = Some(stats);
+        println!("{}", serde_json::to_string(&g)?);
+        return Ok(());
+    }
+    deliver(&graph::dependency_map(&g), copy, "dependency map")
 }
 
 /// Copy `text` to the clipboard (falling back to stdout if there is none),

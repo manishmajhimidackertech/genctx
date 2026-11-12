@@ -39,6 +39,8 @@ thiserror    = "1"
 anyhow       = "1"
 # gitignore walking
 ignore       = "0.4"
+# Import scanning for the dependency graph (already in the tree via ignore).
+regex        = "1"
 # Embedded SQLite for the project context store (.genctx/context.db).
 # `bundled` compiles SQLite in, so users never install it separately.
 rusqlite     = { version = "0.32", features = ["bundled"] }

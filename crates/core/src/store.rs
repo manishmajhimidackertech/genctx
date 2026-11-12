@@ -60,7 +60,14 @@ pub const CONTEXT_VERSION: u32 = 1;
 /// 1: `body` held the whole rendered block (header, SOURCE, HASH, fields).
 /// 2: `fields` holds only the six fields; `source` has its own column; nested
 ///    project stores are linked for cross-project renames.
-const SCHEMA_VERSION: i64 = 2;
+/// 3: the dependency graph — `files` (one row per scanned project file) and
+///    `deps` (indexed import edges, from the static scan and from `IMPORTS:`).
+const SCHEMA_VERSION: i64 = 3;
+
+/// `deps.kind` for edges found by scanning the source (`graph.rs`).
+pub const DEP_SCANNED: &str = "scan";
+/// `deps.kind` for edges listed in a stored `IMPORTS:` field.
+pub const DEP_DECLARED: &str = "declared";
 
 /// How long a connection waits for another process (daemon vs. CLI) to
 /// finish a write before giving up.
@@ -279,7 +286,11 @@ impl ContextStore {
         // Re-read under the lock: another process may have done the work.
         match self.user_version()? {
             0 => self.create_tables()?,
-            1 => self.upgrade_from_v1()?,
+            1 => {
+                self.upgrade_from_v1()?;
+                self.upgrade_from_v2()?;
+            }
+            2 => self.upgrade_from_v2()?,
             _ => {}
         }
         self.conn
@@ -302,7 +313,58 @@ impl ContextStore {
                  CREATE INDEX IF NOT EXISTS context_by_hash ON context(content_hash);
                  CREATE TABLE IF NOT EXISTS linked_stores (rel_root TEXT PRIMARY KEY);",
             )
+            .map_err(self.err())?;
+        self.create_graph_tables()
+    }
+
+    /// The dependency graph. `files` remembers what each scanned file looked
+    /// like (so an unchanged file is never read twice); `deps` holds edges
+    /// in both directions' indexes, so "what does X import" and "who
+    /// imports X" are both index lookups however large the project is.
+    /// `waits` records, for each import that could not be resolved, the
+    /// paths that would have satisfied it — a file created later at one of
+    /// those paths re-scans exactly the files waiting for it.
+    fn create_graph_tables(&self) -> Result<(), StoreError> {
+        self.conn
+            .execute_batch(
+                "CREATE TABLE IF NOT EXISTS files (
+                     rel_path     TEXT PRIMARY KEY,
+                     content_hash TEXT NOT NULL,
+                     mtime        INTEGER NOT NULL,
+                     size         INTEGER NOT NULL,
+                     lang         TEXT NOT NULL,
+                     lines        INTEGER NOT NULL
+                 );
+                 CREATE TABLE IF NOT EXISTS deps (
+                     src  TEXT NOT NULL,
+                     dst  TEXT NOT NULL,
+                     kind TEXT NOT NULL,
+                     PRIMARY KEY (src, dst, kind)
+                 ) WITHOUT ROWID;
+                 CREATE INDEX IF NOT EXISTS deps_by_dst ON deps(dst);
+                 CREATE TABLE IF NOT EXISTS waits (
+                     src       TEXT NOT NULL,
+                     candidate TEXT NOT NULL,
+                     PRIMARY KEY (candidate, src)
+                 ) WITHOUT ROWID;
+                 CREATE INDEX IF NOT EXISTS waits_by_src ON waits(src);
+                 CREATE TABLE IF NOT EXISTS graph_meta (
+                     key   TEXT PRIMARY KEY,
+                     value TEXT NOT NULL
+                 );",
+            )
             .map_err(self.err())
+    }
+
+    /// v2 had no graph: add the tables and seed `deps` from the `IMPORTS:`
+    /// fields already stored. The static scan fills the rest on the next
+    /// `genctx graph`, `genctx index` or save.
+    fn upgrade_from_v2(&self) -> Result<(), StoreError> {
+        self.create_graph_tables()?;
+        for ctx in self.all()? {
+            self.replace_declared_deps(&ctx.rel_path, &ctx.fields)?;
+        }
+        Ok(())
     }
 
     /// v1 rows kept the whole rendered block in `body`; split it.
@@ -350,6 +412,13 @@ impl ContextStore {
     /// The project root this store belongs to.
     pub fn root(&self) -> &Path {
         &self.root
+    }
+
+    /// The root keys are relative to: symlinks resolved and, on Windows and
+    /// macOS, in on-disk case. Walk from here to get keys in the same
+    /// spelling as [`rel_key`](Self::rel_key).
+    pub fn key_root(&self) -> &Path {
+        self.canonical_root.as_deref().unwrap_or(&self.root)
     }
 
     /// Location of the database file.
@@ -422,6 +491,19 @@ impl ContextStore {
         source: &str,
         fields: &str,
     ) -> Result<(), StoreError> {
+        self.savepoint(|| {
+            self.put_row(rel_path, content_hash, source, fields)?;
+            self.replace_declared_deps(rel_path, fields)
+        })
+    }
+
+    fn put_row(
+        &self,
+        rel_path: &str,
+        content_hash: &str,
+        source: &str,
+        fields: &str,
+    ) -> Result<(), StoreError> {
         self.conn
             .execute(
                 "INSERT INTO context (rel_path, content_hash, source, fields, version, updated_at)
@@ -445,25 +527,107 @@ impl ContextStore {
             .map_err(self.err())
     }
 
+    /// Point the `declared` edges of `rel_path` at whatever its `IMPORTS:`
+    /// field lists now.
+    fn replace_declared_deps(&self, rel_path: &str, fields: &str) -> Result<(), StoreError> {
+        self.conn
+            .execute(
+                "DELETE FROM deps WHERE src = ?1 AND kind = ?2",
+                params![rel_path, DEP_DECLARED],
+            )
+            .map_err(self.err())?;
+        let imports = field_value(fields, "IMPORTS")
+            .map(split_paths)
+            .unwrap_or_default();
+        for dst in imports.iter().filter(|d| *d != rel_path) {
+            self.conn
+                .execute(
+                    "INSERT OR IGNORE INTO deps (src, dst, kind) VALUES (?1, ?2, ?3)",
+                    params![rel_path, dst, DEP_DECLARED],
+                )
+                .map_err(self.err())?;
+        }
+        Ok(())
+    }
+
+    /// Run `f` atomically. A savepoint, unlike a transaction, nests: it works
+    /// both on its own and inside a caller's transaction.
+    pub(crate) fn savepoint<T>(
+        &self,
+        f: impl FnOnce() -> Result<T, StoreError>,
+    ) -> Result<T, StoreError> {
+        self.conn
+            .execute_batch("SAVEPOINT genctx_sp")
+            .map_err(self.err())?;
+        match f() {
+            Ok(v) => {
+                self.conn
+                    .execute_batch("RELEASE genctx_sp")
+                    .map_err(self.err())?;
+                Ok(v)
+            }
+            Err(e) => {
+                let _ = self
+                    .conn
+                    .execute_batch("ROLLBACK TO genctx_sp; RELEASE genctx_sp");
+                Err(e)
+            }
+        }
+    }
+
+    /// The raw connection, for the graph module's queries.
+    pub(crate) fn conn(&self) -> &Connection {
+        &self.conn
+    }
+
+    /// Map a rusqlite error on this store to a [`StoreError`].
+    pub(crate) fn sql_err(&self) -> impl Fn(rusqlite::Error) -> StoreError + '_ {
+        self.err()
+    }
+
     /// Delete the entry for exactly `rel_path`. Returns whether one existed.
     pub fn remove(&self, rel_path: &str) -> Result<bool, StoreError> {
-        self.conn
-            .execute("DELETE FROM context WHERE rel_path = ?1", params![rel_path])
-            .map(|n| n > 0)
-            .map_err(self.err())
+        self.savepoint(|| {
+            self.conn
+                .execute(
+                    "DELETE FROM deps WHERE src = ?1 AND kind = ?2",
+                    params![rel_path, DEP_DECLARED],
+                )
+                .map_err(self.err())?;
+            self.conn
+                .execute("DELETE FROM context WHERE rel_path = ?1", params![rel_path])
+                .map(|n| n > 0)
+                .map_err(self.err())
+        })
     }
 
     /// Delete the entry for `rel_path`, or every entry under it if it names
     /// a directory. Returns how many were removed.
+    ///
+    /// The file (or directory) is gone, so its graph node, its outgoing
+    /// edges and its pending waits go too. Edges *to* it stay: the files
+    /// importing it still do, and they reconnect if it comes back.
     pub fn remove_path(&self, rel_path: &str) -> Result<usize, StoreError> {
         // substr() rather than LIKE: `_` and `%` are legal in file names.
-        self.conn
-            .execute(
-                "DELETE FROM context WHERE rel_path = ?1
-                 OR substr(rel_path, 1, length(?1) + 1) = ?1 || '/'",
-                params![rel_path],
-            )
-            .map_err(self.err())
+        const UNDER: &str = "= ?1 OR substr({c}, 1, length(?1) + 1) = ?1 || '/'";
+        let under = |col: &str| format!("{col} {}", UNDER.replace("{c}", col));
+        self.savepoint(|| {
+            for sql in [
+                format!("DELETE FROM deps WHERE {}", under("src")),
+                format!("DELETE FROM waits WHERE {}", under("src")),
+                format!("DELETE FROM files WHERE {}", under("rel_path")),
+            ] {
+                self.conn
+                    .execute(&sql, params![rel_path])
+                    .map_err(self.err())?;
+            }
+            self.conn
+                .execute(
+                    &format!("DELETE FROM context WHERE {}", under("rel_path")),
+                    params![rel_path],
+                )
+                .map_err(self.err())
+        })
     }
 
     /// Re-key the entry for `from` (a file) or every entry under it (a
@@ -473,21 +637,47 @@ impl ContextStore {
     pub fn rename_path(&self, from: &str, to: &str) -> Result<usize, StoreError> {
         let moved = self.entries_under(from)?;
         if moved.is_empty() {
+            // Nothing stored yet (say, a file too small for context), but
+            // the graph may still know it.
+            self.savepoint(|| self.rename_graph_paths(from, to))?;
             return Ok(0);
         }
-        let tx = self.conn.unchecked_transaction().map_err(self.err())?;
-        for ctx in &moved {
-            let new_rel = format!("{to}{}", &ctx.rel_path[from.len()..]);
-            self.remove(&ctx.rel_path)?;
-            self.put(
-                &new_rel,
-                &ctx.content_hash,
-                &ctx.source,
-                &set_field(&ctx.fields, "FILE", &new_rel),
-            )?;
-        }
-        tx.commit().map_err(self.err())?;
+        self.savepoint(|| {
+            for ctx in &moved {
+                let new_rel = format!("{to}{}", &ctx.rel_path[from.len()..]);
+                self.remove(&ctx.rel_path)?;
+                self.put(
+                    &new_rel,
+                    &ctx.content_hash,
+                    &ctx.source,
+                    &set_field(&ctx.fields, "FILE", &new_rel),
+                )?;
+            }
+            self.rename_graph_paths(from, to)
+        })?;
         Ok(moved.len())
+    }
+
+    /// Re-key graph rows under `from` to `to`: nodes, edges in both
+    /// directions (so files importing the moved one follow it) and waits.
+    fn rename_graph_paths(&self, from: &str, to: &str) -> Result<(), StoreError> {
+        for (table, col) in [
+            ("files", "rel_path"),
+            ("deps", "src"),
+            ("deps", "dst"),
+            ("waits", "src"),
+        ] {
+            self.conn
+                .execute(
+                    &format!(
+                        "UPDATE OR REPLACE {table} SET {col} = ?2 || substr({col}, length(?1) + 1)
+                         WHERE {col} = ?1 OR substr({col}, 1, length(?1) + 1) = ?1 || '/'"
+                    ),
+                    params![from, to],
+                )
+                .map_err(self.err())?;
+        }
+        Ok(())
     }
 
     /// The entry for `rel_path` and every entry below it (if a directory).
@@ -535,18 +725,32 @@ impl ContextStore {
     /// Files whose `IMPORTS:` field names `rel_path`. This is what `USED BY`
     /// really is, computed across the project instead of guessed from one
     /// file.
+    ///
+    /// Answered from the `deps` index — both edges declared in `IMPORTS:`
+    /// and edges the static scan found — so it costs one index lookup, not
+    /// a pass over every stored file.
     pub fn importers_of(&self, rel_path: &str) -> Result<Vec<String>, StoreError> {
-        Ok(self
-            .all()?
-            .into_iter()
-            .filter(|c| c.rel_path != rel_path)
-            .filter(|c| {
-                field_value(&c.fields, "IMPORTS")
-                    .map(|v| split_paths(v).iter().any(|p| p == rel_path))
-                    .unwrap_or(false)
-            })
-            .map(|c| c.rel_path)
-            .collect())
+        self.deps_query(
+            "SELECT DISTINCT src FROM deps WHERE dst = ?1 AND src <> ?1 ORDER BY src",
+            rel_path,
+        )
+    }
+
+    /// Project files `rel_path` depends on: declared in its `IMPORTS:` or
+    /// found by the static scan.
+    pub fn imports_of(&self, rel_path: &str) -> Result<Vec<String>, StoreError> {
+        self.deps_query(
+            "SELECT DISTINCT dst FROM deps WHERE src = ?1 AND dst <> ?1 ORDER BY dst",
+            rel_path,
+        )
+    }
+
+    fn deps_query(&self, sql: &str, rel_path: &str) -> Result<Vec<String>, StoreError> {
+        let mut stmt = self.conn.prepare_cached(sql).map_err(self.err())?;
+        let rows = stmt
+            .query_map(params![rel_path], |r| r.get::<_, String>(0))
+            .map_err(self.err())?;
+        rows.collect::<Result<Vec<_>, _>>().map_err(self.err())
     }
 
     /// Resolve the context for `rel_path` whose current content hashes to
@@ -593,12 +797,13 @@ impl ContextStore {
         let donor_gone = !donor.store_root.join(&donor.context.rel_path).exists();
         let same_store = absolute(&donor.store_root) == self.root;
 
-        let tx = self.conn.unchecked_transaction().map_err(self.err())?;
-        self.put(rel_path, content_hash, &donor.context.source, &fields)?;
-        if donor_gone && same_store {
-            self.remove(&donor.context.rel_path)?;
-        }
-        tx.commit().map_err(self.err())?;
+        self.savepoint(|| {
+            self.put(rel_path, content_hash, &donor.context.source, &fields)?;
+            if donor_gone && same_store {
+                self.remove(&donor.context.rel_path)?;
+            }
+            Ok(())
+        })?;
 
         if donor_gone && !same_store {
             if let Some(other) = ContextStore::open_existing(&donor.store_root)? {
@@ -631,7 +836,7 @@ impl ContextStore {
             .collect();
         let tx = self.conn.unchecked_transaction().map_err(self.err())?;
         for rel in &gone {
-            self.remove(rel)?;
+            self.remove_path(rel)?;
         }
         for linked in self.linked_roots()? {
             if !linked.join(STORE_DIR).join(DB_FILENAME).is_file() {
@@ -1049,7 +1254,11 @@ mod tests {
             .unwrap()
             .put("a.rs", "h", "llm", "b")
             .unwrap();
-        fs::rename(dir.path().join(STORE_DIR), dir.path().join(LEGACY_STORE_DIR)).unwrap();
+        fs::rename(
+            dir.path().join(STORE_DIR),
+            dir.path().join(LEGACY_STORE_DIR),
+        )
+        .unwrap();
 
         let store = ContextStore::open_existing(dir.path()).unwrap().unwrap();
         assert_eq!(store.get("a.rs").unwrap().unwrap().fields, "b");
