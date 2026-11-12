@@ -48,7 +48,7 @@ pub const MAX_SCAN_BYTES: u64 = 1024 * 1024;
 
 /// Bump whenever a scanner changes what it finds: the next [`sync`] then
 /// rescans every file instead of trusting edges an older scanner recorded.
-const SCANNER_VERSION: &str = "1";
+const SCANNER_VERSION: &str = "2";
 
 /// `files.lang` for files that are not UTF-8 text. Kept so they are not
 /// re-read on every sync, but never shown.
@@ -124,6 +124,10 @@ pub fn scan_file(root: &Path, rel_path: &str, source: &str, known: Option<&FileS
 
 fn scan_file_inner(root: &Path, rel_path: &str, source: &str, known: Option<&FileSet>) -> Scan {
     let lang = language(rel_path);
+    // Visual Studio and Windows PowerShell 5.1 save a UTF-8 BOM by default;
+    // left in place it hides an import on the first line from every
+    // scanner anchored at the start of a line.
+    let source = source.strip_prefix('\u{feff}').unwrap_or(source);
     let ctx = Ctx {
         root,
         known,
@@ -1852,6 +1856,22 @@ mod tests {
             vec!["styles/_colors.scss"]
         );
         assert_eq!(imports(&dir, "docs/guide.md"), vec!["include/proj/api.h"]);
+    }
+
+    #[test]
+    fn a_utf8_bom_does_not_hide_the_first_import() {
+        let dir = tree(&[
+            ("a.py", "\u{feff}import b\n"),
+            ("b.py", ""),
+            ("Cargo.toml", "[package]\nname = \"x\"\n"),
+            ("src/lib.rs", "\u{feff}mod m;\n"),
+            ("src/m.rs", ""),
+            ("c.c", "\u{feff}#include \"b.h\"\n"),
+            ("b.h", ""),
+        ]);
+        assert_eq!(imports(&dir, "a.py"), vec!["b.py"]);
+        assert_eq!(imports(&dir, "src/lib.rs"), vec!["src/m.rs"]);
+        assert_eq!(imports(&dir, "c.c"), vec!["b.h"]);
     }
 
     #[test]
