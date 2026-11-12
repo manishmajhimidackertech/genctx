@@ -335,6 +335,16 @@ A critical review found, and this pass fixed (each reproduced first, then covere
 
 ---
 
+## Rename and dependency graph
+
+- **Renamed llmctx → genctx** everywhere (binaries, crates, `.genctx/`, `gencontext.yaml`, `<<<GENCTX`, `GENCTX_*`, extension ids). Back-compat: `.llmctx/` is moved on first open, `llmcontext.yaml`/`llmctx_ignore` still read, NTFS stream name and `LLMCTX_VERSION:` kept for `migrate`.
+- **Static dependency graph** (`graph.rs`, schema v3): `files` (rel_path, hash, mtime, size, lang, lines), `deps` (src, dst, kind = `scan`|`declared`, indexed both ways), `waits` (unresolved import candidates → re-scan when the file appears), `graph_meta` (scanner version; bump `SCANNER_VERSION` when a scanner changes so the next sync rescans everything). Sync is incremental by (mtime, size), reads/scans outside the write lock, writes in one savepoint.
+- **Uses**: Ollama is told the scanned imports instead of asked (`IMPORTS:` verbatim); `USED BY` and `--with-imports` are index lookups; `genctx graph [--json]`; MCP `get_dependencies`; `index` builds the graph first.
+- **Extension**: `genctx: Show code graph` — webview (`media/graph.js`), Barnes-Hut layout over visible nodes only, culled/chunked canvas drawing, local graph mode by default above 3,000 files. `tests/graphView.browser.js` drives it in Chromium (needs Playwright; not in `npm test`).
+- **Measured** (22k files / 30k links): cold sync 2 s, warm 0.3 s, JSON 6 MB in 0.25 s, DB 16 MB; full layout settles in ~7 s, 12 ms per frame zoomed out.
+
+---
+
 ## Context for Next Session
 
 Build verified on a real Windows machine; three real bugs found and fixed along the way

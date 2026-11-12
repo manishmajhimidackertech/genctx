@@ -13,6 +13,7 @@ genctx attaches a per-file context block to every source file in your project. T
 3. **If the file starts with an `<<<GENCTX` comment block** (written by the LLM that last generated it), the daemon stores it immediately and strips it from the source file. Ollama is never called. Only a block at the very top of a file counts, so documentation that *shows* the format is never rewritten. A block that is already committed in git is stored but left in the file, so nobody's working tree changes.
 4. **Otherwise**, the daemon waits 30 seconds (in case you keep typing), then asks a local Ollama model for the context fields. The answer is checked, and retried once if it isn't usable, before being stored.
 5. **When you want to use the context**, click the status bar button (or run `genctx: Pack current file to clipboard`). The project header, the file's context and its source are merged and placed on the clipboard. Paste into any LLM.
+6. **When you want to see how it all fits together**, run `genctx: Show code graph`: an Obsidian-style map of the project's files and the imports between them (see [Code graph](#code-graph)).
 
 The source files in your repo stay clean. No comments, no markers, nothing visible.
 
@@ -24,7 +25,8 @@ Each project gets one store at `<project root>/.genctx/context.db`. The project 
 
 - **Invisible to git.** `.genctx/` contains its own `.gitignore` (`*`), so it never shows up in `git status`, and your own `.gitignore` is never edited. The VS Code extension hides the folder from the Explorer and file watcher. On Windows the folder also gets the hidden attribute.
 - **Travels with the project.** Copying, zipping, syncing or backing up the project folder with any tool keeps the context, because it is just a file inside the folder.
-- **Only the file's own fields are stored.** Each entry holds the six fields (`FILE` … `NOTES`). The project header (PROJECT/TASK/CONVENTIONS) is rendered from the current `gencontext.yaml` every time context is packed, so editing the task takes effect everywhere at once. `USED BY` is computed from the other files' `IMPORTS` rather than guessed.
+- **Only the file's own fields are stored.** Each entry holds the six fields (`FILE` … `NOTES`). The project header (PROJECT/TASK/CONVENTIONS) is rendered from the current `gencontext.yaml` every time context is packed, so editing the task takes effect everywhere at once. `USED BY` is computed from the dependency graph rather than guessed.
+- **The dependency graph lives next to it.** The same database holds which file imports which, found by scanning import statements (no model involved), indexed in both directions. See [Code graph](#code-graph).
 - **Survives renames and moves.** Renames, moves and deletes made in VS Code are applied to the store directly, even when the file was also edited. For anything done outside VS Code, each entry is also findable by a hash of its content: the next save or `genctx index` carries the context over with no Ollama call, including between a project and a nested one. A copied file gets its own copy of the context the same way.
 - **One key per file.** Keys are paths relative to the project root, using the on-disk spelling. On Windows and macOS, `SRC\Main.rs` and `src\main.rs` are the same entry.
 - **Safe to share between processes.** The daemon and the CLI can write at the same time. SQLite serialises the writes, and each one is all-or-nothing.
@@ -308,9 +310,33 @@ This creates `gencontext.yaml` at the project root. Edit it to describe your pro
 
 The three path/URL settings can only be set in your *user* settings, never by a workspace's `.vscode/settings.json`. Otherwise a repository could choose which binary runs or where your code is sent. The extension also hides `.genctx/` from the Explorer, search and file watcher.
 
-Commands: **Pack current file to clipboard** (also the status bar button), **Pack current file with the context of its imports**, **Copy project map to clipboard**, **Reindex current file**, **Open gencontext.yaml**.
+Commands: **Pack current file to clipboard** (also the status bar button), **Pack current file with the context of its imports**, **Copy project map to clipboard**, **Show code graph** (also on folders in the Explorer's context menu), **Reindex current file**, **Open gencontext.yaml**.
 
 ---
+
+## Code graph
+
+`genctx: Show code graph` opens a map of the project in the style of Obsidian's graph view: every file is a dot, every import is a link, and well-connected files are drawn bigger.
+
+- **Hover** a file to light up what it imports and what imports it, with its role, size and context state.
+- **Click** opens the file (Alt+click: beside the graph). **Shift+click** packs it, with the context of its imports, to the clipboard.
+- **Local** shows only the files within *Depth* links of the file open in the editor; **double-click** a file to centre the local graph on it. **Follow editor** keeps the view on whatever file you switch to.
+- **Search** dims everything that doesn't match a path or role; Enter jumps to the first match, `/` focuses the box.
+- **Colour** by folder, language, or context state (current, stale, none yet). **Orphans** hides files with no links; **Arrows** shows link direction.
+
+The graph refreshes by itself when files are saved, created, renamed or deleted, and keeps its layout when it does. Projects of more than 3,000 files open on the local graph of the active file; the full graph is one tick away (about 7 seconds to lay out 20,000 files).
+
+### Where the graph comes from
+
+The graph is built by **scanning import statements, not by asking Ollama**. Each language has a small scanner that finds imports and resolves them to project files the way the language would: relative paths and `index` files for JS/TS, packages and `__init__.py` for Python, `mod`/`use` and workspace crates for Rust, `go.mod` packages for Go, package roots for Java/Kotlin/Scala, include paths for C/C++, `require_relative` for Ruby, `require`/`include` for PHP, `@import`/`@use` for CSS/SCSS, and links between files for HTML and Markdown. Packages from outside the project (`react`, `std`, `os`) are not files of the project and are not linked.
+
+The result is stored in the project's `.genctx/context.db`, and it pays for itself beyond the picture:
+
+- **Less work for Ollama.** Before a file is sent for context generation, its imports are already known. The model is told them instead of being asked for them, and they become the `IMPORTS:` field verbatim. A small local model has less to write and nothing to get wrong.
+- **`USED BY` and `--with-imports` are lookups, not guesses.** Both come from the graph, so a file whose stored `IMPORTS:` line missed a dependency still gets the right answer.
+- **It is available immediately.** Scanning a 20,000-file project takes about 2 seconds the first time and a fraction of a second afterwards, because only files whose size or modification time changed are read again. A file created later re-scans exactly the files whose imports were waiting for it. `genctx index` builds the graph before generating anything.
+
+From the command line, `genctx graph` prints the same map as text (`file -> imports`) to paste into an LLM, and `genctx graph --json` prints the whole graph. MCP clients get it through the `get_dependencies` tool.
 
 ## Using genctx from Claude Code and other MCP clients
 
@@ -326,9 +352,10 @@ Or add it to the project's `.mcp.json` (or your client's MCP config):
 { "mcpServers": { "genctx": { "command": "genctx", "args": ["mcp"] } } }
 ```
 
-It offers three read-only tools:
+It offers four read-only tools:
 - `project_map` gives one line per file, with its role.
 - `get_file_context` gives one file's context.
+- `get_dependencies` lists what one file imports and what imports it, each with its role.
 - `search_context` finds files by path or context text.
 
 Paths are confined to the project root.
@@ -345,9 +372,19 @@ Paths are confined to the project root.
 
 ---
 
-## Upgrading from genctx 0.1 (NTFS streams)
+## Upgrading from llmctx
 
-genctx 0.1 kept context in NTFS Alternate Data Streams. To bring that context into the new store without regenerating it, run this once in each project root on Windows:
+genctx was called llmctx. Projects set up under the old name keep working without any action:
+
+- a `.llmctx/` store is moved to `.genctx/` the first time genctx opens it;
+- `llmcontext.yaml` is still read (and its `llmctx_ignore` key), so renaming it to `gencontext.yaml` is optional; when both exist, `gencontext.yaml` wins;
+- the binaries, environment variables and VS Code settings were renamed: `llmctx`/`llmctxd` are now `genctx`/`genctxd`, `LLMCTX_*` variables are `GENCTX_*`, and `llmctx.*` settings are `genctx.*`. LLMs should now write `<<<GENCTX` blocks (see `docs/genctx.md`).
+
+The first `genctx graph` or `genctx index` after upgrading also builds the dependency graph; existing context is kept.
+
+### NTFS streams (llmctx 0.1)
+
+llmctx 0.1 kept context in NTFS Alternate Data Streams. To bring that context into the new store without regenerating it, run this once in each project root on Windows:
 
 ```powershell
 genctx migrate                   # copy stream context into .genctx/context.db
@@ -444,6 +481,8 @@ genctx pack <file>       Merge project header + context + source → clipboard
 genctx pack <file> --with-imports   ...plus the context of the files it imports
 genctx pack <file> --stdout         ...printed instead of copied
 genctx map [dir]         One line per file: path and role (--copy to clipboard)
+genctx graph [dir]       Dependency map: which file imports which (no Ollama)
+genctx graph --json      ...the whole graph as JSON (what the VS Code view reads)
 genctx mcp               Serve the project's context to MCP clients over stdio
 genctx reindex <file>    Force Ollama regeneration for one file
 genctx extract <file>    Run extraction/generation (same as daemon, once)
@@ -511,6 +550,7 @@ genctx/
 │   │       ├── process.rs      # plan() + process_file() — single decision function
 │   │       ├── store.rs        # Context store: .genctx/context.db (SQLite)
 │   │       ├── pack.rs         # Packed text, project map, search (read-only)
+│   │       ├── graph.rs        # Dependency graph: import scanners, incremental sync
 │   │       ├── filter.rs       # Ignore rules for a single file
 │   │       ├── extract.rs      # Top-of-file <<<GENCTX block detection and stripping
 │   │       ├── ollama.rs       # Ollama client: URL policy, JSON answers, validation
@@ -529,7 +569,7 @@ genctx/
 │   ├── cli/                    # genctx — CLI binary
 │   │   ├── Cargo.toml
 │   │   └── src/
-│   │       ├── main.rs         # init, index, pack, map, reindex, extract, migrate, gc, mcp
+│   │       ├── main.rs         # init, index, pack, map, graph, reindex, extract, migrate, gc, mcp
 │   │       └── mcp.rs          # MCP server over stdio
 │   │
 │   └── cpctx/                  # cpctx — context-preserving copy binary
@@ -548,8 +588,15 @@ genctx/
     │   ├── daemon.ts           # Daemon discovery, token handshake, auto-start, reconnect
     │   ├── statusBar.ts        # Per-file status bar item (queued/generating/ready/skipped/error)
     │   ├── pack.ts             # Runs `genctx pack/map/reindex`, writes the clipboard
+    │   ├── graphView.ts        # Code graph panel: runs `genctx graph --json`, follows the editor
+    │   ├── graphHtml.ts        # The graph page's markup and Content Security Policy
+    │   ├── graphPaths.ts       # Editor paths ↔ graph node ids
     │   └── hash.ts             # SHA-256 matching process::content_hash() on Rust side
-    └── tests/                  # node --test: daemon client, hash contract (npm test)
+    ├── media/
+    │   ├── graph.js            # Graph webview: Barnes-Hut layout, canvas drawing, interaction
+    │   ├── graph-model.js      # Pure graph logic (neighbourhoods, search, filters, colours)
+    │   └── graph.css
+    └── tests/                  # node --test (npm test); graphView.browser.js drives the page in Chromium
 ```
 
 ---

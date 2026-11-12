@@ -2,7 +2,7 @@
 // FILE: vscode-extension/src/extension.ts
 // ROLE: VS Code extension entry point — wires save/rename/delete listeners, daemon client, status bar, and commands
 // EXPORTS: activate(), deactivate()
-// IMPORTS: vscode-extension/src/daemon.ts, vscode-extension/src/statusBar.ts, vscode-extension/src/pack.ts, vscode-extension/src/hash.ts
+// IMPORTS: vscode-extension/src/daemon.ts, vscode-extension/src/statusBar.ts, vscode-extension/src/pack.ts, vscode-extension/src/hash.ts, vscode-extension/src/graphView.ts
 // USED BY: VS Code extension host
 // NOTES: All disposables are registered on context.subscriptions; deactivate() is a no-op; the daemon is started on demand
 // GENCTX>>>
@@ -15,6 +15,7 @@ import { DaemonClient, StatusMessage, UpdateAvailableMessage } from "./daemon";
 import { StatusBarManager } from "./statusBar";
 import { cliEnv, copyProjectMap, packFile, reindexFile, verifyCliOnPath } from "./pack";
 import { contentHash } from "./hash";
+import { GraphPanel } from "./graphView";
 
 // ── Extension lifecycle ───────────────────────────────────────────────────────
 
@@ -179,6 +180,29 @@ export function activate(context: vscode.ExtensionContext): void {
         return;
       }
       await copyProjectMap(folder);
+    })
+  );
+
+  context.subscriptions.push(
+    vscode.commands.registerCommand("genctx.showGraph", (target?: vscode.Uri) => {
+      // From the Explorer: the clicked folder (or a file's folder). From the
+      // palette: the active file's workspace folder, else the first one.
+      let folder: string | undefined;
+      if (target?.scheme === "file") {
+        folder = fs.statSync(target.fsPath, { throwIfNoEntry: false })?.isDirectory()
+          ? target.fsPath
+          : path.dirname(target.fsPath);
+      }
+      folder ??=
+        (vscode.window.activeTextEditor &&
+          vscode.workspace.getWorkspaceFolder(vscode.window.activeTextEditor.document.uri)
+            ?.uri.fsPath) ??
+        vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+      if (!folder) {
+        void vscode.window.showWarningMessage("genctx: open a folder first");
+        return;
+      }
+      GraphPanel.show(context.extensionUri, folder);
     })
   );
 

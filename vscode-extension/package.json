@@ -34,6 +34,11 @@
         "title": "genctx: Copy project map to clipboard"
       },
       {
+        "command": "genctx.showGraph",
+        "title": "genctx: Show code graph",
+        "icon": "$(type-hierarchy)"
+      },
+      {
         "command": "genctx.reindex",
         "title": "genctx: Reindex current file (force Ollama regeneration)"
       },
@@ -42,6 +47,14 @@
         "title": "genctx: Open gencontext.yaml"
       }
     ],
+    "menus": {
+      "explorer/context": [
+        {
+          "command": "genctx.showGraph",
+          "group": "navigation@90"
+        }
+      ]
+    },
     "configuration": {
       "title": "genctx",
       "properties": {
@@ -83,6 +96,7 @@
     "watch": "tsc -watch -p ./",
     "lint": "eslint src --ext ts",
     "test": "npm run compile && node --test \"tests/*.test.js\"",
+    "test:browser": "npm run compile && node tests/graphView.browser.js",
     "package": "vsce package"
   },
   "devDependencies": {

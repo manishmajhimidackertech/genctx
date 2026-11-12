@@ -180,8 +180,8 @@ NOTES: Runs inside the Celery-style worker.py process, not the web process
 
 The LLM gets the full picture in one paste — no separate "let me explain the codebase"
 message needed. The PROJECT/TASK lines always come from today's `gencontext.yaml`, so
-changing `task:` shows up in the very next pack. `USED BY` lists the files whose own
-context names this one in `IMPORTS`.
+changing `task:` shows up in the very next pack. `USED BY` lists the files that import
+this one, from the project's dependency graph.
 
 Two more ways to hand context over:
 
@@ -191,10 +191,23 @@ Two more ways to hand context over:
   without you pasting them.
 - **Copy project map to clipboard** (or `genctx map`) gives one line per file with its
   role: a compact way to open a new chat about the whole project.
+- **`genctx graph`** prints the dependency map, `file -> what it imports`, for the whole
+  project. It comes from scanning import statements, so it is complete and current even
+  before Ollama has described a single file.
 
 If you use Claude Code or another MCP client, skip the clipboard entirely: register
 `genctx mcp` once (`claude mcp add genctx -- genctx mcp` from the CodeA4 root) and the
-assistant can look up `project_map`, `get_file_context` and `search_context` itself.
+assistant can look up `project_map`, `get_file_context`, `get_dependencies` and
+`search_context` itself.
+
+### Seeing the whole project
+
+Run **genctx: Show code graph** (Command Palette, or right-click a folder in the Explorer).
+Every file is a dot and every import a link, laid out like Obsidian's graph view. Hover
+`render_jobs.py` to see what it pulls in and who calls it; click a dot to open the file;
+Shift+click to pack it with its imports. Tick **Local** to see only the neighbourhood of
+the file you have open — it follows you as you switch editors. Colour by **Context** to
+spot files whose context is stale or still missing.
 
 ---
 

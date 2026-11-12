@@ -1,9 +1,9 @@
 // <<<GENCTX
 // FILE: vscode-extension/src/pack.ts
 // ROLE: Shell out to the genctx CLI for pack/map/reindex and put results on the clipboard via VS Code
-// EXPORTS: packFile(), copyProjectMap(), reindexFile(), verifyCliOnPath(), cliEnv()
+// EXPORTS: packFile(), copyProjectMap(), reindexFile(), verifyCliOnPath(), cliEnv(), resolveCliBinary()
 // IMPORTS: NONE
-// USED BY: vscode-extension/src/extension.ts
+// USED BY: vscode-extension/src/extension.ts, vscode-extension/src/graphView.ts
 // NOTES: The CLI prints (`--stdout`); the extension writes the clipboard, which works on every OS
 // GENCTX>>>
 
@@ -26,7 +26,7 @@ const execFileAsync = promisify(execFile);
  * Returns the resolved path string, or throws with a human-readable message
  * that includes setup instructions if the binary cannot be found.
  */
-function resolveCliBinary(): string {
+export function resolveCliBinary(): string {
   const config = vscode.workspace.getConfiguration("genctx");
   const override = config.get<string>("cliPath", "").trim();
   if (override) {
